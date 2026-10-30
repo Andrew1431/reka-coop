@@ -6,7 +6,16 @@ Reka Co-op lets friends share one Reka world. One player hosts, and their save i
 
 Tested with 2 players. Built for up to 4.
 
-[color=#e0b04f][b]This is an early alpha.[/b][/color] Expect bugs, things out of sync between players, and the odd soft lock. [b]Back up your saves before playing[/b] (see Install). The mod keeps guests' saves apart and only the host's game writes the world, but an alpha is an alpha.
+[color=#e0b04f][b]This is an early alpha.[/b][/color] Expect bugs, things out of sync between players, and the odd soft lock. That's why [b]the mod backs up your saves automatically[/b] every time the game starts (see below), keeps guests' saves apart, and only lets the host's game write the world.
+
+[size=4][b]Your saves are backed up[/b][/size]
+[list]
+[*]Every time Reka starts with the mod, before the game opens any save, your whole save folder is zipped into [i]%AppData%\RekaGame\RekaCoop-Backups[/i].
+[*]The first one, [i]before-coop_<date>.zip[/i], is your saves exactly as they were before you ever played co-op, and it's kept forever. The newest 10 others are kept too.
+[*]They sit next to your saves, not in the game folder, so uninstalling the mod or verifying the game in Steam leaves them alone.
+[*]To restore: close Reka, move your current [i]Saves[/i] folder somewhere safe, and unzip a backup into a new [i]Saves[/i] folder.
+[*]Guests never save: the host's world is kept in a separate folder, and a guest's own saves are never written.
+[/list]
 
 [size=4][b]Requirements[/b][/size]
 [list]
@@ -76,7 +85,7 @@ During the alpha the mod sends a short report from each session: when you quit, 
 [size=4][b]Install[/b][/size]
 No launch options, ports or IP addresses: install it and play.
 [list=1]
-[*][b]Back up your saves first:[/b] copy [i]%AppData%\RekaGame\Saves[/i] somewhere safe.
+[*][b]Your saves are backed up automatically[/b] on every start (see above). An extra copy of [i]%AppData%\RekaGame\Saves[/i] never hurts.
 [*]In Steam, right-click Reka > Manage > Browse local files. This opens the game folder (it has Reka.exe).
 [*]Copy everything from the download into that folder.
 [*]Start the game once and wait at the main menu. The first start takes a few minutes while BepInEx sets up. Later starts are normal speed.

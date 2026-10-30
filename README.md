@@ -2,13 +2,22 @@
 
 Play [Reka](https://store.steampowered.com/app/1737870/) together with friends. One player hosts, and their save is the world. Friends join over Steam and walk, gather, talk and build in it together.
 
-**Experimental alpha.** Tested with 2 players through the prologue (up to getting your chicken-legged hut). Expect bugs, and back up your saves.
+**Experimental alpha.** Tested with 2 players through the prologue (up to getting your chicken-legged hut). Expect bugs. Your saves are backed up automatically every time the game starts (see below).
 
 - **Download:** see [Releases](../../releases) (also on Nexus Mods).
 - **Discord:** https://discord.gg/EeuAr9yZYY (bug reports, ideas, finding people to play with).
 - **Install:** copy the release zip into Reka's game folder (Steam: right-click Reka > Manage > Browse local files). No launch options. Full player instructions: [mod/README-players.txt](mod/README-players.txt).
 - **Turn it off / remove it:** `Disable Co-op.bat`, `Enable Co-op.bat` and `Uninstall Co-op.bat` in the game folder. None of them touch your saves.
 - **Update:** the main menu says when a new version is out; close Reka and run `Update Co-op.bat`. It downloads the newest release from this repo, checks the zip's SHA-256 against the one GitHub lists, and replaces only the mod's files (BepInEx too, if a release ships a new build). Saves and settings stay.
+
+## Your saves are backed up
+Every time Reka starts with the mod, before the game opens any save, the mod zips your whole save folder (`%AppData%\RekaGame\Saves`) into `%AppData%\RekaGame\RekaCoop-Backups`.
+- The first backup, `before-coop_<date>.zip`, is your saves exactly as they were before you ever played co-op. It is kept forever.
+- The newest 10 backups are kept as well; older ones are cleared out so the folder doesn't grow.
+- The backups live next to your saves, not in the game folder, so uninstalling the mod or verifying the game files in Steam leaves them alone.
+- To restore one: close Reka, move your current `Saves` folder somewhere safe, then unzip a backup into a new `Saves` folder.
+
+On top of that, guests never save: a joining player's game keeps the host's world in a separate folder in the game directory (`CoopSaves`) and never writes to their own saves. Only the host's game saves the shared world, into the host's own save.
 
 ## How it plays
 - The host loads a save; once they're in their world, friends join from Steam ("Join Game" or an invite). Going back to the main menu ends the session.

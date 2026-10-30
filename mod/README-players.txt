@@ -7,11 +7,24 @@ No launch options, ports or IP addresses.
 
 INSTALL (everyone)
 ------------------
-1. Back up your saves first: copy %AppData%\RekaGame\Saves somewhere safe.
+1. Your saves are backed up automatically (see YOUR SAVES ARE SAFE below). An extra copy of
+   %AppData%\RekaGame\Saves never hurts.
 2. In Steam: right-click Reka > Manage > Browse local files. That opens the game folder (it has Reka.exe).
 3. Copy everything from this zip into that folder.
 4. Start Reka and wait at the main menu. The first start takes a few minutes while BepInEx sets up; later starts
    are normal speed.
+
+
+YOUR SAVES ARE SAFE
+-------------------
+Every time Reka starts with the mod, before the game opens any save, the mod zips your whole save folder
+(%AppData%\RekaGame\Saves) into %AppData%\RekaGame\RekaCoop-Backups.
+- before-coop_<date>.zip is your saves as they were before you ever played co-op. It is kept forever.
+- The newest 10 other backups are kept too; older ones are cleared out.
+- They live next to your saves, not in the game folder, so uninstalling or verifying the game keeps them.
+- To restore: close Reka, move your current Saves folder somewhere safe, unzip a backup into a new Saves folder.
+Guests never save: the host's world is kept in the game folder under CoopSaves, and a guest's own saves are
+never written. Only the host's game saves the shared world, into the host's own save.
 
 
 PLAY
