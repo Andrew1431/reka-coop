@@ -112,6 +112,7 @@ public class CoopDriver : MonoBehaviour
                 Sync.BirdSync.Tick(Session);
             }
             Diagnostics.Reporter.Tick(Session);
+            UpdateCheck.Tick();
             Dev.WindowTitle.Tick();
 #if DEVBUILD
             Dev.AutoLoad.Tick();

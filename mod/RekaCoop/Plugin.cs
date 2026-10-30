@@ -21,6 +21,7 @@ public class Plugin : BasePlugin
         Logger = Log;
         Instance.Init();
         Diagnostics.Reporter.Init(Config);
+        UpdateCheck.Init(Config);
         Logger.LogInfo($"{PluginName} {PluginVersion} loaded on Reka {UnityEngine.Application.version} (instance '{Instance.Name ?? "default"}')");
 
         var harmony = new Harmony(PluginGuid);

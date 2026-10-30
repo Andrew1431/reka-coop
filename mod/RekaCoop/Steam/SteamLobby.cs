@@ -194,7 +194,7 @@ internal static class SteamLobby
         if (version != Protocol.Version.ToString())
         {
             Status = $"Steam: host runs co-op protocol {version}, this is {Protocol.Version}";
-            Sync.DialogueSync.ShowLocal("The host has a different version of the co-op mod. Both need the same one.");
+            Sync.DialogueSync.ShowLocal("The host has a different version of the co-op mod. Both need the same one: run \"Update Co-op\" in the game folder.");
             lobby.Leave();
             if (Instance.Auto) CoopDriver.ResumeHosting();
             return;

@@ -8,6 +8,7 @@ Play [Reka](https://store.steampowered.com/app/1737870/) together with friends. 
 - **Discord:** https://discord.gg/EeuAr9yZYY (bug reports, ideas, finding people to play with).
 - **Install:** copy the release zip into Reka's game folder (Steam: right-click Reka > Manage > Browse local files). No launch options. Full player instructions: [mod/README-players.txt](mod/README-players.txt).
 - **Turn it off / remove it:** `Disable Co-op.bat`, `Enable Co-op.bat` and `Uninstall Co-op.bat` in the game folder. None of them touch your saves.
+- **Update:** the main menu says when a new version is out; close Reka and run `Update Co-op.bat`. It downloads the newest release from this repo, checks the zip's SHA-256 against the one GitHub lists, and replaces only the mod's files (BepInEx too, if a release ships a new build). Saves and settings stay.
 
 ## How it plays
 - The host loads a save; once they're in their world, friends join from Steam ("Join Game" or an invite). Going back to the main menu ends the session.
@@ -22,8 +23,10 @@ During the alpha the mod sends scrubbed logs (no names, Steam ids, user or PC na
 - `mod/build.ps1` builds `RekaCoop.dll` against the copy's interop assemblies and installs it; `mod/package.ps1` makes the player zip; `mod/test.ps1` runs the offline network tests.
 - `server/log-reporter/` is the Cloudflare Worker that receives bug reports.
 
-## Made with AI
-The code was written by an AI (Claude, by Anthropic), directed, playtested and reviewed by the author.
+## Made with AI, open for audit
+All of the code in this repo, the docs included, was written by an AI (Claude, by Anthropic), directed, playtested and reviewed by the author. Commits made this way carry a `Co-Authored-By: Claude` line.
+
+Everything that ships is here: the plugin source, the build and packaging scripts, the install/update/uninstall scripts and the bug-report server. You can read what the mod does, what it sends (`mod/RekaCoop/Diagnostics/`) and what it asks GitHub (`mod/RekaCoop/UpdateCheck.cs`), and build the DLL yourself with `mod/build.ps1` instead of using a release. Each release lists its zip's SHA-256.
 
 ## Not affiliated
 A fan-made mod, not made or supported by Reka's developers. Please send co-op bugs here, not to them.
