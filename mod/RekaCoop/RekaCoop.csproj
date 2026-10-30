@@ -1,0 +1,34 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net6.0</TargetFramework>
+    <AssemblyName>RekaCoop</AssemblyName>
+    <RootNamespace>RekaCoop</RootNamespace>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <Nullable>disable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <NoWarn>$(NoWarn);CS0618</NoWarn>
+    <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
+    <DefineConstants Condition="'$(DevBuild)' == 'true'">$(DefineConstants);DEVBUILD</DefineConstants>
+  </PropertyGroup>
+
+  <Target Name="RequireGameDirs" BeforeTargets="ResolveAssemblyReferences"
+          Condition="'$(BepInExCoreDir)' == '' Or '$(InteropDir)' == ''">
+    <Error Text="Set BepInExCoreDir and InteropDir. Use build.ps1 to supply them automatically." />
+  </Target>
+
+  <ItemGroup>
+    <!-- 2.1.4 resolves to its netstandard2.1 build here; the net8.0 build won't load on BepInEx's .NET 6. -->
+    <PackageReference Include="LiteNetLib" Version="2.1.4" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Reference Include="$(BepInExCoreDir)\BepInEx.Core.dll" Private="false" />
+    <Reference Include="$(BepInExCoreDir)\BepInEx.Unity.Common.dll" Private="false" />
+    <Reference Include="$(BepInExCoreDir)\BepInEx.Unity.IL2CPP.dll" Private="false" />
+    <Reference Include="$(BepInExCoreDir)\Il2CppInterop.Runtime.dll" Private="false" />
+    <Reference Include="$(BepInExCoreDir)\Il2CppInterop.Common.dll" Private="false" />
+    <Reference Include="$(BepInExCoreDir)\0Harmony.dll" Private="false" />
+    <Reference Include="$(InteropDir)\*.dll" Private="false" />
+  </ItemGroup>
+</Project>

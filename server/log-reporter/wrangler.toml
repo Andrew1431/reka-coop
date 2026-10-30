@@ -1,0 +1,24 @@
+# Deploying publishes a public URL on your Cloudflare account (see README.md).
+name = "reka-coop-logs"
+main = "src/index.js"
+compatibility_date = "2026-10-01"
+workers_dev = true
+
+[vars]
+# Ships inside the mod (Diagnostics/Uploader.cs), so it is not a secret: it only turns away stray requests.
+UPLOAD_KEY = "reka-coop-playtest-1"
+MAX_UPLOAD_BYTES = "1048576"    # gzip body
+MAX_UNPACKED_BYTES = "8388608"  # after gunzip (zip bombs)
+MIN_VERSION = "0.3.14"          # older mods get 426 and keep their reports on disk
+MIN_PROTOCOL = "48"
+# ADMIN_TOKEN is a secret: wrangler secret put ADMIN_TOKEN
+
+[[r2_buckets]]
+binding = "REPORTS"
+bucket_name = "reka-coop-logs"
+
+# Per client IP. Periods can only be 10 or 60 seconds.
+[[ratelimits]]
+name = "UPLOAD_LIMIT"
+namespace_id = "1001"
+simple = { limit = 6, period = 60 }

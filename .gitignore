@@ -1,0 +1,12 @@
+# Game copies, downloads and private files never go in the repo
+/game/
+/vendor/
+/local/
+bin/
+obj/
+*.log
+*.user
+.vs/
+/server/log-reporter/.local-bucket/
+/server/log-reporter/node_modules/
+/server/log-reporter/.wrangler/

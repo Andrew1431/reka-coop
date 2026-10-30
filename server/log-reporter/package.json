@@ -1,0 +1,11 @@
+{
+  "name": "reka-coop-logs",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node test/test.mjs",
+    "serve-local": "node test/serve-local.mjs",
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy"
+  }
+}

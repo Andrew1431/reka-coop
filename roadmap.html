@@ -1,0 +1,332 @@
+<title>Reka Co-op Roadmap</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Young+Serif&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: single reading column; milestone track as a vertical path the hut walks along */
+:root {
+  --bg: #f3f1ea;
+  --surface: #fbfaf6;
+  --fg: #23251f;
+  --muted: #646a5c;
+  --line: #d9d6c8;
+  --accent: #5a6f2e;      /* moss */
+  --accent-soft: #e4e9d4;
+  --ember: #b5562a;       /* hearth ember, used only for risk */
+  --done: #3f7a4a;
+  --doing: #b88a1e;
+  --todo: #8d907f;
+  --display: "Young Serif", Georgia, serif;
+  --body: "IBM Plex Sans", system-ui, sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #171914; --surface: #1f221b; --fg: #e6e5dc; --muted: #9da190; --line: #343829;
+  --accent: #a9c06a; --accent-soft: #2a3220; --ember: #e0855a; --done: #74b27f; --doing: #dcb24e; --todo: #7d8173;
+  color-scheme: dark } }
+:root[data-theme="dark"] {
+  --bg: #171914; --surface: #1f221b; --fg: #e6e5dc; --muted: #9da190; --line: #343829;
+  --accent: #a9c06a; --accent-soft: #2a3220; --ember: #e0855a; --done: #74b27f; --doing: #dcb24e; --todo: #7d8173;
+  color-scheme: dark }
+
+body { background: var(--bg); color: var(--fg); font-family: var(--body); font-size: 15px; line-height: 1.6; }
+.wrap { max-width: 860px; margin: 0 auto; padding-block: 40px 80px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+h1, h2, h3 { font-family: var(--display); font-weight: 400; text-wrap: balance; line-height: 1.2; margin: 0; }
+h1 { font-size: clamp(30px, 6vw, 44px); }
+h2 { font-size: 24px; margin-bottom: 14px; }
+h3 { font-size: 17px; }
+p { margin: 0; max-width: 68ch; }
+a { color: var(--accent); }
+code, .mono { font-family: var(--mono); font-size: 0.86em; }
+.eyebrow { font-family: var(--mono); font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+section { display: flex; flex-direction: column; gap: 14px; padding-top: 44px; }
+header { display: flex; flex-direction: column; gap: 14px; }
+.lede { font-size: 17px; color: var(--muted); }
+
+.ident { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: 6px; overflow: hidden; margin-top: 8px; }
+.ident div { background: var(--surface); padding: 10px 12px; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.ident span:first-child { font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
+.ident span:last-child { font-family: var(--mono); font-size: 13px; overflow-wrap: anywhere; }
+
+.progress { display: flex; flex-direction: column; gap: 8px; }
+.bar { display: flex; height: 10px; border-radius: 5px; overflow: hidden; background: var(--line); }
+.bar i { display: block; }
+.legend { display: flex; flex-wrap: wrap; gap: 16px; font-size: 13px; color: var(--muted); }
+.legend b { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 6px; vertical-align: 0; }
+
+.track { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.ms { display: grid; grid-template-columns: 28px 1fr; gap: 0 14px; }
+.ms .rail { display: flex; flex-direction: column; align-items: center; }
+.ms .dot { width: 14px; height: 14px; border-radius: 50%; border: 2px solid var(--todo); background: var(--bg); margin-top: 6px; flex: none; }
+.ms .stem { flex: 1; width: 2px; background: var(--line); margin-top: 4px; }
+.ms:last-child .stem { display: none; }
+.ms[data-s="done"] .dot { background: var(--done); border-color: var(--done); }
+.ms[data-s="doing"] .dot { border-color: var(--doing); box-shadow: inset 0 0 0 3px var(--bg); background: var(--doing); }
+.ms .body { padding-bottom: 26px; display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.ms .top { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 10px; }
+.tag { font-family: var(--mono); font-size: 11px; padding: 1px 7px; border-radius: 10px; border: 1px solid var(--line); color: var(--muted); white-space: nowrap; }
+.ms[data-s="done"] .tag.st { color: var(--done); border-color: var(--done); }
+.ms[data-s="doing"] .tag.st { color: var(--doing); border-color: var(--doing); }
+.ms ul { margin: 2px 0 0; padding-left: 18px; color: var(--fg); }
+.ms li { margin: 2px 0; }
+.ms .exit { font-size: 13.5px; color: var(--muted); }
+.ms .exit strong { color: var(--fg); font-weight: 600; }
+
+.findings { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 18px 28px; }
+.finding { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.finding h3 { font-family: var(--body); font-weight: 600; font-size: 14.5px; }
+.finding p { font-size: 14px; color: var(--muted); }
+
+.tablewrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 6px; }
+table { border-collapse: collapse; width: 100%; font-size: 14px; min-width: 560px; }
+th, td { text-align: left; padding: 9px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); font-weight: 500; background: var(--surface); }
+tr:last-child td { border-bottom: 0; }
+td:first-child { font-weight: 600; white-space: nowrap; }
+td .mono { color: var(--muted); }
+
+.risk { display: flex; flex-direction: column; gap: 10px; }
+.risk div { border-left: 3px solid var(--ember); padding: 2px 0 2px 12px; }
+.risk strong { font-weight: 600; }
+.order { margin: 0; padding-left: 22px; display: flex; flex-direction: column; gap: 6px; }
+.decide { display: flex; flex-direction: column; gap: 10px; counter-reset: q; }
+.decide div { background: var(--accent-soft); border-radius: 6px; padding: 10px 14px; }
+.verdict { background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 14px 16px; display: flex; flex-direction: column; gap: 8px; }
+.verdict ul { margin: 0; padding-left: 18px; }
+footer { padding-top: 48px; font-size: 13px; color: var(--muted); }
+</style>
+
+<div class="wrap">
+<header>
+  <span class="eyebrow">Baba Jaga's apprentice, now with company</span>
+  <h1>Reka Co-op Roadmap</h1>
+  <p class="lede">A BepInEx 6 mod that lets 2–4 friends share one Reka world: walk the same forest, ride the same chicken-legged hut, build, brew and take quests together. The host's save is the world. Guests are avatars that send requests to the host.</p>
+  <div class="ident">
+    <div><span>Store</span><span>Steam 1737870</span></div>
+    <div><span>Build ID</span><span>26200396 (1.0, 2026-10-26)</span></div>
+    <div><span>Engine</span><span>Unity 6000.1.17f1</span></div>
+    <div><span>Backend</span><span>IL2CPP x64 · metadata v31</span></div>
+    <div><span>Reka.exe SHA-256</span><span>CC70C5F7…F423749A</span></div>
+    <div><span>GameAssembly SHA-256</span><span>9FE962C6…79419DC4F</span></div>
+  </div>
+</header>
+
+<section>
+  <span class="eyebrow">Status · updated 2026-10-29 (0.3.13)</span>
+  <div class="progress">
+    <div class="bar" role="img" aria-label="8 of 12 milestones done, 3 in progress">
+      <i style="width:67%;background:var(--done)"></i><i style="width:25%;background:var(--doing)"></i>
+    </div>
+    <div class="legend"><span><b style="background:var(--done)"></b>8 done</span><span><b style="background:var(--doing)"></b>3 in progress</span><span><b style="background:var(--todo)"></b>1 to do</span></div>
+  </div>
+</section>
+
+<section>
+  <h2>What we found</h2>
+  <div class="findings">
+    <div class="finding"><h3>No netcode, but Steam is wired in</h3><p>The game ships no Mirror, Netcode, FishNet or Photon. It does bundle Facepunch.Steamworks, including SteamMatchmaking and SteamNetworkingSockets, and calls SteamClient under Reka's real app ID. Lobbies and P2P are available without adding a DLL. The lobby methods survived IL2CPP stripping: creating a lobby, its data and rich presence all work.</p></div>
+    <div class="finding"><h3>Readable, unobfuscated code</h3><p>About 5,100 types in Assembly-CSharp, with descriptive names in the global namespace. Only Rewired, which the vendor obfuscates, is scrambled. Metadata v31 is unencrypted. This is the same Il2CppInterop path as Big Walk.</p></div>
+    <div class="finding"><h3>Saves are folders of XML</h3><p><code>%AppData%\RekaGame\Saves\&lt;slot&gt;\</code> holds Meta, House, Inventory, Character, Progress, PoiHistory, FogMap, HeightMap and more. Joining a game can work by sending the host's save folder, loading it with the game's own loader, then streaming changes.</p></div>
+    <div class="finding"><h3>Procedural world, combat-free</h3><p><code>EnvironmentGenManager</code>, <code>MapLoader</code> and chapter generation settings are present, and HealthBar is the only combat-related type. We don't have to sync any combat. The hard parts are world generation, the hut and story state.</p></div>
+    <div class="finding"><h3>Built-in debug panels</h3><p>Dozens of <code>Debug*Section</code> and <code>Marketing*Tab</code> registrations (teleport, cheats). They're ready-made hooks for test bots and repro setups.</p></div>
+    <div class="finding"><h3>Greenfield</h3><p>There are no Reka mods on GitHub, Nexus or Thunderstore, no Thunderstore community, and no Workshop. The developer has not said anything about co-op. 1.0 launched today, so expect patches that break hooks.</p></div>
+  </div>
+</section>
+
+<section>
+  <h2>Architecture</h2>
+  <div class="tablewrap"><table>
+    <tr><th>Layer</th><th>Choice</th><th>Why</th></tr>
+    <tr><td>Loader</td><td>BepInEx 6 IL2CPP be.791 (≥ be.787)</td><td>be.755+ reads Unity 6 metadata. be.786/787 fix crashes when Unity strips members.</td></tr>
+    <tr><td>Sync core</td><td>Plain C# library, no Unity references</td><td>Runs under a fake-world fuzz harness without starting the game, as the playbook recommends.</td></tr>
+    <tr><td>Transport (dev)</td><td>LiteNetLib (netstandard2.1 build)</td><td>Direct IP and loopback for two local instances and the chaos relay. The net8 build won't load.</td></tr>
+    <tr><td>Transport (players)</td><td>Steam lobby via the game's Facepunch; traffic over Steam relay (<code>ISteamNetworkingMessages</code>)</td><td>Friends-list invites, relayed connections with no port forwarding, and no Spacewar workaround because Reka already starts Steam. The host takes Steam and direct-IP guests at the same time.</td></tr>
+    <tr><td>Authority</td><td>Host-authoritative, ownership tracked with epochs</td><td>Guests send requests and the host applies them and broadcasts results. This matches Nitrox and Planet Crafter.</td></tr>
+    <tr><td>Story</td><td>Effect capture</td><td>The host runs the quest and dialogue scripts. Their writes become numbered transactions that are acknowledged, and guests never run the scripts.</td></tr>
+  </table></div>
+</section>
+
+<section>
+  <h2>Milestones</h2>
+  <ol class="track">
+    <li class="ms" data-s="done"><div class="rail"><span class="dot"></span><span class="stem"></span></div><div class="body">
+      <div class="top"><h3>Triage & identity</h3><span class="tag st">done</span><span class="tag">phase 0</span></div>
+      <p>Recorded the build, hashes and engine. Confirmed nobody has worked on Reka co-op in the coop-anything directory.</p>
+    </div></li>
+    <li class="ms" data-s="done"><div class="rail"><span class="dot"></span><span class="stem"></span></div><div class="body">
+      <div class="top"><h3>Research & static survey</h3><span class="tag st">done</span><span class="tag">phase 1</span></div>
+      <p>Mapped assemblies, Steam integration, save format and subsystem classes from the metadata strings. Checked the tooling state and prior co-op mods.</p>
+    </div></li>
+    <li class="ms" data-s="done"><div class="rail"><span class="dot"></span><span class="stem"></span></div><div class="body">
+      <div class="top"><h3>Workspace</h3><span class="tag st">done</span><span class="tag">phase 2</span></div>
+      <ul>
+        <li>Done: two hardlinked test copies (host, client). The Steam install is untouched, and the game had no single-instance flag to remove.</li>
+        <li>Done: BepInEx be.791 IL2CPP installed, pinned by SHA-256 <span class="mono">bb1c5109…b3ec6f9a</span>, and the interop assemblies generated.</li>
+        <li>Done: both copies ran at the same time on one Steam account, each started Steam successfully and reached the main menu, each with its own Unity log.</li>
+        <li>Done: the plugin project with build, launch and stop scripts. Each copy keeps its saves in its own folder through the game's built-in save-folder override, and each has its own logs.</li>
+        <li>Done: the networking layer (LiteNetLib). The host and client copies connect over loopback, handshake, and show the round-trip time on screen.</li>
+        <li>Done: both copies load the same save automatically, sit side by side in windows titled HOST and CLIENT, and save screenshots on request.</li>
+      </ul>
+      <p class="exit">Memory is tight but three copies fit: a third joined a running two-player session for the late-join test.</p>
+      <p class="exit"><strong>Exit:</strong> a plugin logs every frame in two copies running at once, and the real save is unchanged by hash.</p>
+    </div></li>
+    <li class="ms" data-s="done"><div class="rail"><span class="dot"></span><span class="stem"></span></div><div class="body">
+      <div class="top"><h3>Hook map</h3><span class="tag st">done</span><span class="tag">phase 3</span></div>
+      <p>Seven parallel research passes mapped every remaining slice from the interop signatures and save files, each with a sync design and a first step (<code>research/*.md</code>). Each hook is proven by a log line when its slice is built.</p>
+      <ul>
+        <li>Steam: lobbies, invites, rich presence and P2P all survive in the build. Lobbies go through the game's Facepunch; traffic goes through the flat <code>ISteamNetworkingMessages</code> exports.</li>
+        <li>World: no single seed, but a per-step generation state exists. Join sends the host's whole save (about 90 KB gzipped so far). <code>WeatherManager</code> has a ready-made snapshot API.</li>
+        <li>Hut: <code>ChickenLegsBehaviour</code> + <code>ChickenLegsAIController</code>. Riders are carried by <code>PlayerPlatformCarry</code>, not parented. No test save has the hut unlocked yet.</li>
+        <li>Building: <code>BB_Building</code> and the game's own compact <code>HouseBlockSpec</code>; <code>placementIndex</code> is the network id. <code>HouseBuildRegistry</code> turned out to be unrelated.</li>
+        <li>Inventory: two 20-slot grids, an overflow list and money, changed through one message bus. Pickups have ids that match across machines on the same save.</li>
+        <li>Story: custom dialogue (rumours, decisions, one dialogue box, a camera takeover), chapters in <code>TasksTracker</code>, flags in string-keyed static tables.</li>
+        <li>Gear: tools and backpack follow bones through <code>ObjectFollower</code>; equip state on <code>UseItemManager</code>; footsteps via an animation event.</li>
+      </ul>
+    </div></li>
+    <li class="ms" data-s="done"><div class="rail"><span class="dot"></span><span class="stem"></span></div><div class="body">
+      <div class="top"><h3>See each other</h3><span class="tag st">done</span><span class="tag">players</span></div>
+      <p>Working: the remote player appears as a puppet copied from the local body with only its meshes, bones and animator kept. It walks and animates from 15 Hz snapshots shown 100 ms behind. A test bot walking in the client copy shows up in the host copy.</p>
+      <ul>
+        <li>Done: each player's own appearance. It comes from a co-op profile kept outside any save, imported from your newest save the first time and sent on join and whenever it changes. The host replays everyone's look to players who join later.</li>
+        <li>Done: backpack, lantern and held items on the other player, plus their footstep sounds.</li>
+        <li>Done: a guest who has never played gets a random look of their own instead of turning into the host's twin. Still to do: a real character-creator step for them.</li>
+        <li>Done: a name tag over each player (their Steam name).</li>
+        <li>To do: an automated distance check for the exit test.</li>
+      </ul>
+      <p class="exit"><strong>Exit:</strong> a bot walks a circle on the client and the host sees it within tolerance, over loopback.</p>
+    </div></li>
+    <li class="ms" data-s="done"><div class="rail"><span class="dot"></span><span class="stem"></span></div><div class="body">
+      <div class="top"><h3>Same world, same day</h3><span class="tag st">done</span><span class="tag">join</span></div>
+      <p>Send the host's save folder as a snapshot, load it on the client in a sandboxed slot, then sync time of day, weather and wind. Joining mid-game replays the current state.</p>
+      <ul>
+        <li>Done: a third copy joined a running session and got the house, story, trials, containers, places and hut pieces. Then all three ran 150 random builds and removals each at once, and the houses matched.</li>
+        <li>Done: the third player quit and rejoined. Their inventory came back intact, and their old figure disappeared from the other two screens.</li>
+      </ul>
+      <p class="exit"><strong>Exit (met):</strong> a late-joining third client produces the same state hash as the host.</p>
+    </div></li>
+    <li class="ms" data-s="doing"><div class="rail"><span class="dot"></span><span class="stem"></span></div><div class="body">
+      <div class="top"><h3>Ride the hut</h3><span class="tag st">in progress</span><span class="tag">hut</span></div>
+      <p>The host owns the one hut. Each guest's copy becomes a mirror: its AI and root motion are blocked and host data drives it. Riders send their position relative to the hut floor. Guests can ask the host to call the hut. Needs a test save past the hut ritual.</p>
+      <ul>
+        <li>Done: a guest at the controls steers the host's hut. The guest's own input goes to the host 20 times a second, and the host's camera and controls are left alone. Letting go leaves the hut standing where it was steered.</li>
+        <li>Done: a guest rode the hut for 116 m and stayed put on the floor. Backport takes a guest to the host's hut.</li>
+        <li>Fixed: with a guest driving, the host standing aboard fell through the floor (the game turns the floor off for whoever drives, assuming it is the local player in the seat). The floor now stays on.</li>
+        <li>To do: check the game's own way of taking the controls on a guest. The test save is too early in the story: taking control is still locked there.</li>
+      </ul>
+      <p class="exit"><strong>Exit:</strong> two players stand in the hut while it walks 500 m, with no jitter and no one falling through. <strong>Met</strong> (guest driving, host standing aboard, ~500 m; neither moved on the floor).</p>
+    </div></li>
+    <li class="ms" data-s="done"><div class="rail"><span class="dot"></span><span class="stem"></span></div><div class="body">
+      <div class="top"><h3>Shared world objects</h3><span class="tag st">done</span><span class="tag">world</span></div>
+      <p>Foraging, pickups, loot, containers and animals. The first request to the host wins, and AI runs on the host and is mirrored to guests. Everyone shares one pack (items, money, building blocks, clothes), kept in the host's save.</p>
+      <ul>
+        <li>Done: deer, hares and villagers near a guest copy the host's: position, facing and what they are doing (grazing, drinking, sitting, working). A villager that stands still is sent once a second, and far away a lighter sync takes over.</li>
+        <li>Done: carrying hares and liftable things, in both directions. Others see the carried pose and the carrier's arms.</li>
+        <li>Done: town freezes. A place that took 60 ms to check every 30 s now takes 2 ms, and the scene scan no longer stalls on 12,500 objects. The 35-50 ms hitches every half minute came from garbage the scan made; most half minutes now have no frame over 50 ms.</li>
+        <li>Done: guests startle deer too: the host's flee checks look at the nearest player, and the deer runs from that one.</li>
+      </ul>
+      <p class="exit"><strong>Exit:</strong> both players grab the same mushroom at once, and it is picked once and appears in one inventory. <strong>Met</strong> (3 of 3 races: the host's grab kept it, the guest's copy was given back).</p>
+    </div></li>
+    <li class="ms" data-s="done"><div class="rail"><span class="dot"></span><span class="stem"></span></div><div class="body">
+      <div class="top"><h3>Build together</h3><span class="tag st">done</span><span class="tag">building</span></div>
+      <p>Each placement travels as the game's own <code>HouseBlockSpec</code>. The host re-checks it, assigns the <code>placementIndex</code> and broadcasts; remote pieces are spawned without paying or touching undo. Whole-hut resync uses the game's own house loader.</p>
+      <ul>
+        <li>Done: each player numbers new blocks in their own lane, so two players building at once never pick the same number. Two fuzz runs (200 and 300 random builds and removals from both players at once, a few a second each) ended with identical houses.</li>
+      </ul>
+      <p class="exit"><strong>Exit:</strong> 200 fuzzed concurrent edits leave both clients with an identical House.xml. <strong>Met.</strong></p>
+    </div></li>
+    <li class="ms" data-s="doing"><div class="rail"><span class="dot"></span><span class="stem"></span></div><div class="body">
+      <div class="top"><h3>Villagers, quests, story</h3><span class="tag st">in progress</span><span class="tag">story</span></div>
+      <p>Effect capture on <code>Quest</code>, <code>TasksTracker</code>, <code>ChapterState</code> and <code>JournalManager</code>. Dialogue runs once, on the host; whoever starts a conversation leads it and pulls nearby players in. Quest rewards are granted to every player. FMOD events are replayed on puppets.</p>
+      <p>Next, as core systems rather than quest by quest (from the 2026-10-27 evening playtest):</p>
+      <ul>
+        <li>Quest and story sync: the host's quest and story progress goes to guests whenever it changes, and their game loads it the way it loads a save. Quest-gated things then appear for everyone (the crows in an early quest were missing for the guest).</li>
+        <li>Shared grants: whatever the story gives a player (skills such as raven fetch, unlocks, journal entries) is repeated for every player. The guest got the journal and the Tab inventory from Baba Jaga but not raven fetch.</li>
+        <li>A conversation state machine: one talk at a time with clear states and one owner, every step confirmed, and clean recovery when someone leaves or walks off. Players sometimes got stuck in each other's dialogues.</li>
+        <li>Then a short list of special scenes that need their own handling, found by playing (Baba Jaga's dialogue and book did not reach the guest).</li>
+        <li>Built in 0.3.9, checked with dev commands and waiting for a playtest: saved progress (skill and tool unlocks, tutorial steps, the collection) follows the host; story objects the quests switch on or off follow the host; conversations have a host-run state that guests check every second, a continue that can't get lost, a 45 s limit on a guest's choice, and a host far from a guest's talk stays free to walk.</li>
+        <li>Built in 0.3.10: a desync detector. Every 15 s the guest compares story flags, trials, saved progress, story objects and the pack with the host's, and writes anything that stays different to desync.log, so a playtest's "she couldn't see it" can be read off afterwards. It found that the tutorial's talking crows were never mirrored to guests (they now are). On a fresh local campaign the guest matched the host through the whole prologue.</li>
+        <li>0.3.11, for the game's hotfix 1.0.25: the patched game crashed at start with BepInEx (a hook in its IL2CPP layer landed on the wrong function); the mod now corrects that, and the package turns off BepInEx's Unity log listener. A guest's join could drop into the new-game intro instead of the host's world; fixed. Checked locally on the new build: join, desync checks all matching, villagers and crows in place.</li>
+        <li>0.3.12, conversations as one for everyone, tested together: the starter steers; the others are moved beside them and see the starter's camera, skipped typing and highlighted option, and their own buttons can't move or end it. Puppets no longer turn up in the other player's clothes.</li>
+        <li>0.3.13: the desync detector now fixes what it finds on the guest (story objects on or off, trial progress) instead of only logging it. Carrying the merchant's lost wheel is shared (it had no id). A walking check over 30 s of turns put the other player's copy within 3 cm (95th percentile).</li>
+      </ul>
+      <p class="exit"><strong>Exit:</strong> a scripted chapter playthrough with matching progress digests at every step.</p>
+    </div></li>
+    <li class="ms" data-s="doing"><div class="rail"><span class="dot"></span><span class="stem"></span></div><div class="body">
+      <div class="top"><h3>Steam lobbies & automated QA</h3><span class="tag st">in progress</span><span class="tag">phase 6</span></div>
+      <p>Invite from the friends list and join through <code>+connect_lobby</code>. Run the bot driving 2–4 instances through the chaos relay. Do one real two-account smoke test.</p>
+      <ul>
+        <li>Done: the host makes a friends-only lobby with an "Invite friends" button and "Join Game" in the friends list. A guest started from an invite, or with <code>-coopguest</code>, joins it over Steam relay. Verified on one PC up to the join; the guest side needs a second account.</li>
+        <li>Done: 26 offline network tests run every session case over direct IP and over a stand-in for Steam: four players, relaying, starting in either order, host restart, version reject, 1.2 MB messages, a host that vanishes.</li>
+        <li>Done: guests reconnect by themselves when the host restarts, and keep their pack.</li>
+        <li>Done: the real two-PC Steam test: invite, join, world transfer, crash and rejoin, quitting to the menu, leaving the lobby.</li>
+      </ul>
+      <p class="exit"><strong>Exit:</strong> the QA level is honestly "automated", with the suite summary pasted in the write-up.</p>
+    </div></li>
+    <li class="ms" data-s="todo"><div class="rail"><span class="dot"></span><span class="stem"></span></div><div class="body">
+      <div class="top"><h3>Ship & give back</h3><span class="tag st">to do</span><span class="tag">phase 7–8</span></div>
+      <p>Request a Reka community on Thunderstore and publish a one-click host/join package. Open a draft PR to coop-anything with <code>games/reka/</code> and a directory entry.</p>
+      <ul>
+        <li>Also publish on Nexus Mods, where Reka already has a mod community. Nexus has no BepInEx IL2CPP pack for Reka, so the upload bundles the pinned BepInEx be.791 with the plugin and gives manual install steps; Vortex probably won't support the game at first. Nexus keeps old file versions archived rather than deleted, so nothing private goes in any upload.</li>
+        <li>A zip release on GitHub works for our own group straight away; Thunderstore and Nexus come after it.</li>
+      </ul>
+    </div></li>
+  </ol>
+</section>
+
+<section>
+  <h2>Build order</h2>
+  <ol class="order">
+    <li><strong>Clock and weather. Done.</strong> The host sends the game's own weather snapshot (time of day, clouds, fog, rain, forecast) every 5 s and to anyone who joins; guests apply it and don't roll their own. Verified: host set to 8 pm with heavy cloud, the client followed within one snapshot.</li>
+    <li><strong>Gear on the other player. Done.</strong> Backpack, held items and the lantern copy onto the other player and follow their bones; arm layer weights are synced; footsteps play at their feet. Switching tools is verified: the lantern moves between hand and backpack hook, the pine branch between hand and backpack slot.</li>
+    <li><strong>Join by save transfer. Done.</strong> The host sends its save when someone joins; the guest loads it into a sandbox and never saves. Verified with a client that had no save at all. When the host travels to a new map, guests follow: the host's arrival save is sent and loaded where they stand, and each guest keeps their own pack. Verified with a real trip.</li>
+    <li><strong>Shared pack and pickups. Done.</strong> Since 0.3.7 everyone shares one pack, the host's own: items, money, building blocks and plans, clothes. Changes go out as small deltas the host applies and relays, and a full copy every few seconds corrects any drift; tested with three players, a late join and both sides changing it at once. Anything picked up from the world disappears for everyone and stays gone in the host's save. Verified both ways, and across a restart. Trees, pots and chest contents are shared too: what anyone puts in a chest or oven is there for everyone and survives the host's save. When two players grab the same item in the same instant, the host's order decides and the other gives their copy back.</li>
+    <li><strong>Hut. Working.</strong> The host's hut is mirrored on guests (pose and walk animation), a guest calling the hut asks the host, and riders stay put on the moving floor on both screens. The feather colour is shared. The ground flattening and props hiding when the hut sits now happen on guests too. A guest at the controls steers it for everyone, and backport lands guests at it.</li>
+    <li><strong>Building. Done.</strong> House blocks and furniture placed, removed or changed by anyone appear for everyone; the builder pays from their own pack. The house is identical on both screens and a guest's block survives the host's save. Blueprint sites are shared. Two blocks placed in the same instant used to leave the houses different; now the host moves the later block to a free slot and both stay identical.</li>
+    <li><strong>Hut stations and gardens. Done.</strong> Cauldron and oven queues, the mill, the candle maker, plants, ivy and on/off pieces like lamps are shared through the game's own save entries. Verified with plant growth both ways.</li>
+    <li><strong>Story. Working.</strong> Since 0.3.8 whoever starts a conversation leads it, and it runs once, on the host. A guest talking to a villager, starting a story scene or handing something in (berries to the wood creatures) has the host's copy do it. Players near the speaker get the full conversation on their own screen, dialogue camera included. The leader picks the options and anyone can move a line on. Players further away get subtitles. Quest rewards land in the shared pack, and loot bags in trees and wells open for anyone. The story's flags, trial progress (current trial, ticked tasks, finished quest steps) and the state of every place on the map (91 on the test map) follow the host. Guests can't move the trial on alone. Villagers and animals follow the host's: same behaviour, same destination, same spot within about a metre. Small drift is walked off. Deer flee from guests as well as the host.</li>
+    <li><strong>Frame cost. Done.</strong> All this syncing first caused hitches of up to half a second, because searching the game's scene is slow. Lookups are now cached and the checks spread across frames, the scan reuses its lists instead of making garbage, and places and hut pieces far from everyone are checked less often.</li>
+    <li><strong>First new-campaign playtest (2026-10-27).</strong> Tutorial and first area with two players. Since fixed: the lantern's light on the other player, the first line after a pick, pickups in tight piles, loot bags for guests, and the raven spell is now visible to the other player. Joining waits until the host is through the fog. Conversations (0.3.8): whoever starts one pulls everyone in, with the dialogue camera, and the berry hand-in works for guests. Needs a playtest.</li>
+    <li><strong>Second two-PC playtest (2026-10-27 evening).</strong> A new campaign on the day-one patch (build 26225334); the mod was rebuilt for it. Conversations are much better but not solid yet. Quest progress and the story's grants don't fully reach the guest. Next: quest and story sync, shared grants, and a conversation state machine (see Villagers, quests, story). All three built in 0.3.9; needs the next playtest.</li>
+    <li><strong>Steam lobbies. Built.</strong> Invites, Join Game and Steam-relayed play, plus reconnecting after a host restart. Ready for the first two-PC test; until then, direct IP works as before.</li>
+  </ol>
+</section>
+
+<section>
+  <h2>Decisions (made 2026-10-26, updated 2026-10-27)</h2>
+  <div class="decide">
+    <div><strong>1. Inventory: one shared pack (changed 2026-10-27).</strong> Everything is shared: items, money, building blocks and plans, clothes. It lives in the host's save, which suits dropping in and out. Collect quests count the shared pack, so both players' mushrooms add up.</div>
+    <div><strong>2. Dialogue: whoever starts it leads.</strong> Changed 2026-10-27. Any player can start a conversation; it runs once, on the host, and pulls in everyone nearby (same lines, dialogue camera). The player who started it picks the options; the others see them.</div>
+    <div><strong>3. Player cap: designed for 4, tested with 2.</strong></div>
+    <div><strong>4. Guest progress: none.</strong> Guests never touch their own saves; everything they do lives in the host's world.</div>
+  </div>
+</section>
+
+<section>
+  <h2>Risks</h2>
+  <div class="risk">
+    <div><strong>1.0 launched today.</strong> Early patches will move hooks. Every hook lives in one table checked at startup, and the mod disables itself cleanly when the build ID doesn't match.</div>
+    <div><strong>Facepunch stripping. Cleared for lobbies.</strong> The lobby methods work. Game traffic doesn't depend on Facepunch at all: it calls the game's own steam_api64.dll directly.</div>
+    <div><strong>New maps.</strong> Solved without regenerating on guests: when the host travels, its arrival save is sent and loaded on every guest. Loading a save re-runs the map jump with the saved generation, which the mod now tells apart from real travel.</div>
+    <div><strong>Steam Cloud.</strong> A guest's sandboxed save slot must never sync to the cloud, or it overwrites their real saves.</div>
+    <div><strong>One Steam account per PC.</strong> Local multi-instance tests run over LiteNetLib with a mocked Steam layer. Real Steam networking needs a second account or PC.</div>
+  </div>
+</section>
+
+<section>
+  <h2>About coop-anything</h2>
+  <div class="verdict">
+    <p><strong>MCP server: skip it.</strong> It's a read-only Python server that mostly serves the repo's markdown. The only parts that add anything are <code>game_identity</code>, <code>detect_engine</code> and <code>validate_entry</code>, and the identity work is already done. A local clone does the same job.</p>
+    <p><strong>Keep:</strong> the playbook pages on effect capture, actor ownership and fuzzing, the Steam networking gotchas, and the Python tools that don't depend on the engine (gamepool, gameslot, chaos relay, bot scenarios, flight-recorder analyzer).</p>
+    <p><strong>Do it our own way:</strong></p>
+    <ul>
+      <li><strong>C++ tools:</strong> bridge, ownership, fuzz and fakeworld are C++. We port the ideas to C#, and the Python clients keep working.</li>
+      <li><strong>hotreload:</strong> it doesn't apply, because BepInEx IL2CPP can't unload assemblies. A fast build-deploy-restart loop from the Big Walk skill replaces it.</li>
+      <li><strong>Spacewar 480:</strong> it's irrelevant, because Reka already initializes Steam under its real app ID.</li>
+      <li><strong>Pull requests:</strong> skip the per-phase ones. Contribute once something works.</li>
+    </ul>
+  </div>
+</section>
+
+<footer>Sources: static survey of the local install, the coop-anything playbook (AGENTS.md, how-coop-mods-work, effect-capture-story-sync, actor-ownership, networking-steam-spacewar), the bigwalkmodding skill, the Steam store page, and the BepInEx bleeding-edge changelog.</footer>
+</div>

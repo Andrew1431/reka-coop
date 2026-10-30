@@ -1,0 +1,1075 @@
+using System.Collections.Generic;
+using System.Linq;
+using HarmonyLib;
+using Il2CppInterop.Runtime.InteropTypes.Arrays;
+using LiteNetLib;
+using LiteNetLib.Utils;
+using RekaCoop.Net;
+using UnityEngine;
+
+namespace RekaCoop.Sync;
+
+// One conversation, run once, on the host. Whoever starts it leads it: a guest who talks to a villager (or uses
+// anything else that moves the story on, like handing berries to the wood creatures) has the host's copy of that
+// thing do it instead, so the story, rewards and quest steps happen once, in the host's world.
+//
+// The whole group is in every conversation, and the starter steers it. When it starts, everyone else is moved to stand
+// beside the starter (and stays there afterwards: the group keeps together). Every line the host's dialogue box shows
+// is a real line on every guest's box, and everyone sees the starter's camera (TalkCamera). Only the starter moves it
+// on: the host with the game's own input, a guest starter by continuing past the line on their box (which runs the
+// host's pending continue: the next line, the options, or the end); everyone else's continue does nothing. The starter
+// picks the options; everyone else sees the same panel, read-only, with the starter's highlighted option. When the
+// starter skips the rest of a line's typing, everyone's line shows in full too. It ends for everyone when it ends on
+// the host.
+public static class DialogueSync
+{
+    private enum Kind : byte
+    {
+        Line = 1, Options = 2, Chosen = 3, End = 4,  // host -> guests
+        Camera = 5,                                    // host -> guests: speaker head path, speaker name
+        Pick = 6, Next = 7, Talk = 8,                  // guest -> host
+        State = 9,                                     // host -> guests, every second: where the conversation is
+        Gather = 10,                                   // host -> guests: where each player stands for the talk
+        Cam = 11,                                      // the starter's camera pose (a guest's goes through the host)
+        Skip = 12,                                     // the starter showed the rest of a line at once (line gen, index)
+        Hover = 13,                                    // the option the starter has highlighted
+        Passive = 14,                                  // host -> guests: a passive line (a monologue) shown here
+    }
+
+    // The conversation as the host has it. Guests check theirs against it every second, so a lost or late message
+    // can't leave anyone stuck in a line, a camera or an options panel.
+    private enum Phase : byte { Idle = 0, Line = 1, Options = 2 }
+
+    // What a guest asked the host's copy to do; see DialogueHooks.
+    internal enum Act : byte { Say = 1, Options = 2, Standalone = 3, Tutorial = 4, PoiDialogue = 5, PoiDialogueOnce = 6, TakeItem = 7, BabaTalk = 8, DefaultDialogue = 9, Interact = 10, Enter = 11 }
+
+    private const float RequestWindow = 3f, NextCooldown = 0.3f, StateEvery = 1f;
+
+    private static int _lastGeneration = -1, _lastIndex = -1;
+    private static bool _talking;
+    private static float _quietSince = -1;  // the options panel can take a frame or two to open or to hand over to the next line
+    private static List<string> _offered;
+
+    // Host: who leads the conversation on screen (-1 none), and the last guest request that may be starting one.
+    private static int _leader = -1, _requestedBy = -1;
+    private static float _requestedAt = -10, _nextAt;
+    private static bool _remotePick;
+    private static Vector3? _talkAt;   // where the conversation is (what a guest asked for, or the speaker's head)
+    private static (int gen, int index) _nextFor = (-1, -1);   // a guest's continue that came while the line was still revealing
+    private static float _nextState;
+
+    // Host: what the dialogue box will do when the host presses continue (the next line, or at the last one the options
+    // or the end), and for which line. A guest's continue does the same.
+    private static Il2CppSystem.Action _waiting;
+    private static (int gen, int index) _waitingLine;
+
+    internal static bool Continue()
+    {
+        _nextFor = (-1, -1);
+        var ui = DialogueUILogic.Instance;
+        if (ui == null || !ui.IsTalking || ui.currentDialogueIsPassive || DialogueOptionsPanel.IsShowing) return false;
+        if (_waiting == null || _waitingLine != (ui.DialogueGeneration, ui.indexInDialogue)) return false;  // still revealing
+        var go = _waiting;
+        _waiting = null;
+        go.Invoke();
+        return true;
+    }
+
+    // Someone else steers: their own continue input mustn't move the line on, so it gets an action that does nothing
+    // (the host keeps the real one for the starter's continue).
+    internal static void OnWaitingForContinue(DialogueUILogic ui, ref Il2CppSystem.Action action)
+    {
+        if (CoopDriver.Session?.Role != Role.Client)
+        {
+            _waiting = action;
+            _waitingLine = (ui.DialogueGeneration, ui.indexInDialogue);
+        }
+        if (WatchingTalk) action = Nothing;
+    }
+
+    private static readonly Il2CppSystem.Action Nothing = (System.Action)(() => { });
+
+    // The starter skipped the typing: everyone else's line shows in full.
+    private static bool _applyingSkip;
+    private static (int gen, int index) _skipFor = (-1, -1);
+
+    internal static void OnSkipped(Febucci.TextAnimatorForUnity.TypewriterComponent tw)
+    {
+        var session = CoopDriver.Session;
+        if (_applyingSkip || session == null || !session.IsConnected || !LeadingTalk) return;
+        var ui = DialogueUILogic.Instance;
+        if (ui == null || ui.talker == null || ui.talker.typewriter == null || ui.talker.typewriter.Pointer != tw.Pointer) return;
+        (int gen, int index) line = session.Role == Role.Client ? _hostLine : (ui.DialogueGeneration, ui.indexInDialogue);
+        var w = session.BeginMessage(MsgType.Dialogue);
+        w.Put((byte)Kind.Skip);
+        w.Put(line.gen);
+        w.Put(line.index);
+        session.Send(w, DeliveryMethod.ReliableOrdered);
+    }
+
+    // A skip for the line on screen (or about to be: a guest's line starts a moment after the host's message).
+    private static void ApplySkip()
+    {
+        if (_skipFor.gen < 0) return;
+        var ui = DialogueUILogic.Instance;
+        (int gen, int index) line = CoopDriver.Session?.Role == Role.Client ? _hostLine : ui == null ? (-1, -1) : (ui.DialogueGeneration, ui.indexInDialogue);
+        if (line != _skipFor || !WatchingTalk) { if (line.gen > _skipFor.gen || line.index > _skipFor.index && line.gen == _skipFor.gen) _skipFor = (-1, -1); return; }
+        if (ui?.talker == null || !ui.talker.IsRevealing || _pending != null) return;
+        _skipFor = (-1, -1);
+        _applyingSkip = true;
+        try { ui.talker.typewriter?.SkipTypewriter(); }
+        finally { _applyingSkip = false; }
+    }
+
+    // The option the starter has highlighted, and on everyone else's panel the one they're shown.
+    private static int _hoverSent = -1, _hoverWanted = -1;
+
+    private static int Highlighted(DialogueOptionsPanel panel)
+    {
+        var sel = UnityEngine.EventSystems.EventSystem.current?.currentSelectedGameObject;
+        if (sel == null || panel.spawnedRows == null) return -1;
+        for (int i = 0; i < panel.spawnedRows.Count; i++)
+            if (panel.spawnedRows[i] != null && panel.spawnedRows[i].gameObject.Pointer == sel.Pointer) return i;
+        return -1;
+    }
+
+    private static void TickHover(CoopSession session)
+    {
+        var panel = DialogueOptionsPanel.IsShowing ? Panel() : null;
+        if (panel == null) { _hoverSent = -1; return; }
+        if (LeadingTalk)
+        {
+            int i = Highlighted(panel);
+            if (i < 0 || i == _hoverSent) return;
+            _hoverSent = i;
+            var w = session.BeginMessage(MsgType.Dialogue);
+            w.Put((byte)Kind.Hover);
+            w.Put(i);
+            session.Send(w, DeliveryMethod.ReliableOrdered);
+        }
+        else if (WatchingTalk && _hoverWanted >= 0 && panel.spawnedRows != null && _hoverWanted < panel.spawnedRows.Count && Highlighted(panel) != _hoverWanted)
+        {
+            var row = panel.spawnedRows[_hoverWanted];
+            if (row == null || !row.gameObject.activeInHierarchy) return;
+            UnityEngine.EventSystems.EventSystem.current?.SetSelectedGameObject(row.gameObject);
+            panel.MoveHighlightToCurrentSelection(false);
+        }
+    }
+
+    // In a conversation, steering it / watching someone else steer it.
+    internal static bool LeadingTalk => CoopDriver.Session?.Role == Role.Client ? InTalkHere && _leadingTalk : _talking && _leader == Me;
+    internal static bool WatchingTalk => CoopDriver.Session?.Role == Role.Client ? InTalkHere && !_leadingTalk : _talking && _leader >= 0 && _leader != Me;
+    private static bool InTalkHere => _following || _leading || _watching;  // guest: a line or the options of the host's talk
+    internal static int Leader => _leader;
+    private static (int id, float at) _lastLeader = (-1, -100f);
+    // Host: who leads the conversation now, or led the one that ended in the last few seconds (a choice that follows its
+    // last line belongs to them); -1 if none.
+    internal static int RecentLeader => _talking && _leader >= 0 ? _leader : Time.unscaledTime - _lastLeader.at < 5f ? _lastLeader.id : -1;
+    internal static void PutCamKind(NetDataWriter w) => w.Put((byte)Kind.Cam);
+
+    private static Transform _cameraSentFor;
+
+    public static void Attach(CoopSession session)
+    {
+        session.Message += (from, type, r) =>
+        {
+            if (type != MsgType.Dialogue) return;
+            if (session.Role == Role.Client) OnMessage(session, r);
+            else if (session.Role == Role.Host) OnRequest(session, from, r);
+        };
+        session.PlayerLeft += id => { if (_leader == id) _leader = 0; };
+    }
+
+    internal static int Me => CoopDriver.Session?.LocalPlayerId ?? 0;
+
+    public static void Tick(CoopSession session)
+    {
+        if (session.Role == Role.Client && Time.unscaledTime < _strayUntil) CloseStrayLine();
+        if (session.Role == Role.Client) { ShowAfterTalkNow(); ShowPending(); WatchLeaving(session); TalkCamera.Tick(session); ApplySkip(); TickHover(session); return; }
+        if (session.Role != Role.Host || !session.IsConnected) return;
+        var ui = DialogueUILogic.Instance;
+        if (ui == null) return;
+        bool talking = ui.IsTalking && !ui.currentDialogueIsPassive && ui.currentDialogue != null;
+        if (_personal)
+        {
+            if (!talking && !DialogueOptionsPanel.IsShowing) _personal = false;
+            return;
+        }
+        if (talking || DialogueOptionsPanel.IsShowing) _quietSince = -1;
+        if (_nextFor.gen >= 0 && _waiting != null && _waitingLine == _nextFor) Continue();
+        TalkCamera.Tick(session);
+        ApplySkip();
+        TickHover(session);
+        SendState(session, ui, talking);
+        SendPassive(session, ui);
+        if (talking)
+        {
+            int gen = ui.DialogueGeneration, index = ui.indexInDialogue;
+            if (gen == _lastGeneration && index == _lastIndex) return;
+            _lastGeneration = gen;
+            _lastIndex = index;
+            if (index < 0 || index >= ui.currentDialogue.Length) return;
+            Begin(session);
+            var w = session.BeginMessage(MsgType.Dialogue);
+            w.Put((byte)Kind.Line);
+            w.Put(_leader);
+            w.Put(gen);
+            w.Put(index);
+            w.Put(At(ui.namesOfPersonTalking, index));
+            w.Put(At(ui.titlesOfPersonTalking, index));
+            w.Put(At(ui.currentDialogue, index));
+            session.Send(w, DeliveryMethod.ReliableOrdered);
+        }
+        else if (_talking && !DialogueOptionsPanel.IsShowing)
+        {
+            if (_quietSince < 0) _quietSince = Time.unscaledTime;
+            if (Time.unscaledTime - _quietSince < 0.5f) return;
+            _talking = false;
+            _lastIndex = -1;
+            _lastLeader = (_leader, Time.unscaledTime);
+            _leader = -1;
+            _nextFor = (-1, -1);
+            _talkAt = null;
+            _cameraSentFor = null;
+            TalkCamera.Release();
+            var w = session.BeginMessage(MsgType.Dialogue);
+            w.Put((byte)Kind.End);
+            session.Send(w, DeliveryMethod.ReliableOrdered);
+        }
+    }
+
+    // Host: passive lines (Reka's own thoughts at the Lutki, started by whoever walked up; they run here like every
+    // story dialogue) are shown on every copy too, or a guest who set one off never sees it.
+    private static (int gen, int index) _passiveSent = (-1, -1);
+
+    private static void SendPassive(CoopSession session, DialogueUILogic ui)
+    {
+        if (!ui.IsTalking || !ui.currentDialogueIsPassive || ui.currentDialogue == null) return;
+        var line = (ui.DialogueGeneration, ui.indexInDialogue);
+        if (line == _passiveSent || line.Item2 < 0 || line.Item2 >= ui.currentDialogue.Length) return;
+        _passiveSent = line;
+        var w = session.BeginMessage(MsgType.Dialogue);
+        w.Put((byte)Kind.Passive);
+        w.Put(At(ui.namesOfPersonTalking, line.Item2));
+        w.Put(At(ui.titlesOfPersonTalking, line.Item2));
+        w.Put(At(ui.currentDialogue, line.Item2));
+        session.Send(w, DeliveryMethod.ReliableOrdered);
+    }
+
+    // Host: a conversation is starting; it belongs to the guest who just asked for it, else to the host.
+    // A talk that only concerns the one talking (the mirror: it opens character customization for whoever uses it) runs
+    // on their own copy: a guest's isn't sent to the host, and the host's isn't shared or gathered.
+    private static bool _personal;
+
+    internal static bool Personal(Component c)
+    {
+        if (c == null) return false;
+        var t = c.transform;
+        while (t != null && t.name != "CharacterCustomization") t = t.parent;  // the mirror block's object; no component of that type
+        if (t == null) return false;
+        if (CoopDriver.Session?.Role == Role.Host) _personal = true;
+        Plugin.Logger.LogInfo($"Dialogue: {ScenePath.Of(c.transform)} is personal, runs here only");
+        return true;
+    }
+
+    // Host: a talk about to start was set off by this player (they walked into a player detector). The talker may walk
+    // over first, so the request holds a while longer than a guest's ask.
+    internal static void NoteRequest(int playerId, float hold)
+    {
+        _requestedBy = playerId;
+        _requestedAt = Time.unscaledTime + hold;
+    }
+
+    private static void Begin(CoopSession session)
+    {
+        if (_talking) return;
+        _talking = true;
+        _leader = _requestedBy >= 0 && Time.unscaledTime - _requestedAt < RequestWindow ? _requestedBy : Me;
+        // A guest still loading (the arrival talk after travelling starts at once) couldn't click on: nobody could.
+        if (_leader != Me && !PlayerSync.InWorldNow(_leader))
+        {
+            Plugin.Logger.LogInfo($"Dialogue: {NameTags.NameOf(_leader)} isn't in the world yet; leading it here");
+            _leader = Me;
+        }
+        _requestedBy = -1;
+        Plugin.Logger.LogInfo($"Dialogue: conversation led by {NameTags.NameOf(_leader)}");
+        Gather(session);
+    }
+
+    // Host: everyone but the starter stands in a row beside the starter, facing the conversation (not behind them, where
+    // the dialogue camera looks over the starter's shoulder).
+    private static void Gather(CoopSession session)
+    {
+        var lead = _leader == Me ? Find.One<PlayerMovement_2021>()?.transform : PlayerSync.PuppetRoot(_leader);
+        if (lead == null) { Plugin.Logger.LogWarning($"Dialogue: no body for {NameTags.NameOf(_leader)}; nobody moved"); return; }
+        var at = lead.position;
+        var fwd = Vector3.ProjectOnPlane(_talkAt is { } t ? t - at : lead.forward, Vector3.up);
+        if (fwd.sqrMagnitude < 0.01f) fwd = Vector3.ProjectOnPlane(lead.forward, Vector3.up);
+        fwd.Normalize();
+        var right = Vector3.Cross(Vector3.up, fwd);
+        var look = _talkAt ?? at + fwd * 3f;
+        var ids = new List<int>();
+        if (_leader != Me) ids.Add(Me);
+        foreach (var p in session.Players.Values) if (p.Ready && p.PlayerId != _leader) ids.Add(p.PlayerId);
+        // Everyone comes, however far off. The wrong player leading, which once pulled the
+        // host across the map, is handled where the leader is picked (the host's own key press leads).
+        var spots = new List<(int id, Vector3 pos, float yaw)>();
+        for (int i = 0; i < ids.Count; i++)
+        {
+            float side = i % 2 == 0 ? 1f : -1f, rank = i / 2 + 1;
+            var pos = Ground(at + right * (side * 1.6f * rank) + fwd * 0.2f, at.y);
+            spots.Add((ids[i], pos, Quaternion.LookRotation(Vector3.ProjectOnPlane(look - pos, Vector3.up)).eulerAngles.y));
+        }
+        var w = session.BeginMessage(MsgType.Dialogue);
+        w.Put((byte)Kind.Gather);
+        w.Put(spots.Count);
+        foreach (var (id, pos, yaw) in spots) { w.Put(id); w.Put(pos.x); w.Put(pos.y); w.Put(pos.z); w.Put(yaw); }
+        session.Send(w, DeliveryMethod.ReliableOrdered);
+        foreach (var (id, pos, yaw) in spots) if (id == Me) MoveHere(pos, yaw);
+    }
+
+    // The ground under a spot: of the surfaces below 3 m up, the one nearest the starter's height (not a roof or a
+    // treetop).
+    private static Vector3 Ground(Vector3 p, float nearY)
+    {
+        var best = p;
+        best.y = nearY;
+        float bestD = 3f;
+        foreach (var hit in Physics.RaycastAll(p + Vector3.up * 3f, Vector3.down, 8f, ~0, QueryTriggerInteraction.Ignore))
+        {
+            float d = Mathf.Abs(hit.point.y - nearY);
+            if (d < bestD && hit.collider.GetComponentInParent<PlayerMovement_2021>() == null) { bestD = d; best.y = hit.point.y; }
+        }
+        best.y += 0.05f;
+        return best;
+    }
+
+    private static void MoveHere(Vector3 pos, float yaw)
+    {
+        var me = Find.One<PlayerMovement_2021>();
+        if (me == null) return;
+        var rb = me.GetComponent<Rigidbody>();
+        if (rb != null) { rb.position = pos; rb.linearVelocity = Vector3.zero; }
+        me.transform.SetPositionAndRotation(pos, Quaternion.Euler(0, yaw, 0));
+        Plugin.Logger.LogInfo($"Dialogue: moved beside the starter ({pos.x:0.0}, {pos.y:0.0}, {pos.z:0.0})");
+    }
+
+    private static string At(Il2CppStringArray a, int i) => a != null && i < a.Length && a[i] != null ? a[i] : "";
+
+    internal static void OnOptionsShown(Il2CppSystem.Collections.Generic.List<string> labels, Il2CppSystem.Collections.Generic.List<bool> heard, bool allowExit)
+    {
+        var session = CoopDriver.Session;
+        if (session?.Role != Role.Host || !session.IsConnected || labels == null) return;
+        Begin(session);  // so guests are told when the panel closes with nobody talking
+        _offered = new List<string>();
+        foreach (var l in labels) _offered.Add(l ?? "");
+        _hoverWanted = _hoverSent = -1;
+        var w = session.BeginMessage(MsgType.Dialogue);
+        w.Put((byte)Kind.Options);
+        w.Put(_leader);
+        w.Put(allowExit);
+        w.Put(_offered.Count);
+        for (int i = 0; i < _offered.Count; i++)
+        {
+            w.Put(_offered[i]);
+            w.Put(heard != null && i < heard.Count && heard[i]);
+        }
+        session.Send(w, DeliveryMethod.ReliableOrdered);
+        if (_leader != Me) CoopDriver.Notice($"{NameTags.NameOf(_leader)} is choosing what to say.");
+    }
+
+    // False when the pick isn't this player's to make.
+    internal static bool OnOptionPicked(int index)
+    {
+        var session = CoopDriver.Session;
+        if (session?.Role == Role.Client && _watching)
+        {
+            CoopDriver.Notice($"{NameTags.NameOf(_optionsLeader)} is choosing what to say.");
+            return false;
+        }
+        if (session?.Role != Role.Host || !session.IsConnected) return true;
+        if (_talking && _leader >= 0 && _leader != Me && !_remotePick)
+        {
+            CoopDriver.Notice($"{NameTags.NameOf(_leader)} is choosing what to say.");
+            return false;
+        }
+        if (_offered == null || index < 0 || index >= _offered.Count) return true;
+        var w = session.BeginMessage(MsgType.Dialogue);
+        w.Put((byte)Kind.Chosen);
+        w.Put(_leader >= 0 ? _leader : Me);
+        w.Put(_offered[index]);
+        session.Send(w, DeliveryMethod.ReliableOrdered);
+        return true;
+    }
+
+    // Host: the dialogue camera turned to a speaker; guests turn to their own copy of them.
+    internal static void OnCameraActivated(Transform head, string speaker)
+    {
+        var session = CoopDriver.Session;
+        if (session?.Role != Role.Host || !session.IsConnected || head == null || head == _cameraSentFor) return;
+        _cameraSentFor = head;
+        _talkAt ??= head.position;
+        var w = session.BeginMessage(MsgType.Dialogue);
+        w.Put((byte)Kind.Camera);
+        w.Put(ScenePath.Of(head));
+        w.Put(speaker ?? "");
+        session.Send(w, DeliveryMethod.ReliableOrdered);
+    }
+
+    // Host: the conversation's state, every second and whenever it changes.
+    private static (Phase, int, int, int) _stateSent;
+
+    private static void SendState(CoopSession session, DialogueUILogic ui, bool talking)
+    {
+        var phase = DialogueOptionsPanel.IsShowing && _talking ? Phase.Options : talking && _talking ? Phase.Line : Phase.Idle;
+        var state = (phase, _talking ? _leader : -1, talking ? ui.DialogueGeneration : -1, talking ? ui.indexInDialogue : -1);
+        if (state == _stateSent && Time.unscaledTime < _nextState) return;
+        _stateSent = state;
+        _nextState = Time.unscaledTime + StateEvery;
+        var w = session.BeginMessage(MsgType.Dialogue);
+        w.Put((byte)Kind.State);
+        w.Put((byte)state.Item1);
+        w.Put(state.Item2);
+        w.Put(state.Item3);
+        w.Put(state.Item4);
+        session.Send(w, DeliveryMethod.ReliableOrdered);
+    }
+
+    // Host: a guest's request.
+    private static void OnRequest(CoopSession session, RemotePlayer from, NetDataReader r)
+    {
+        switch ((Kind)r.GetByte())
+        {
+            case Kind.Pick:
+            {
+                int index = r.GetInt();
+                if (from.PlayerId != _leader || !DialogueOptionsPanel.IsShowing) return;
+                var panel = Panel();
+                if (panel == null) return;
+                _remotePick = true;
+                try
+                {
+                    if (index >= 0) panel.OnOptionPicked(index);
+                    else panel.CloseAndEndDialogue();  // the leader left the options
+                }
+                finally { _remotePick = false; }
+                break;
+            }
+            case Kind.Next:
+            {
+                var line = (r.GetInt(), r.GetInt());
+                var ui = DialogueUILogic.Instance;
+                if (from.PlayerId != _leader) return;  // only the starter steers
+                if (ui == null || line != (ui.DialogueGeneration, ui.indexInDialogue)) return;  // already moved past it
+                if (_waiting != null && _waitingLine == line) { if (Time.unscaledTime >= _nextAt && Continue()) _nextAt = Time.unscaledTime + NextCooldown; }
+                else _nextFor = line;  // still revealing: continue once it waits
+                break;
+            }
+            case Kind.Cam:
+                TalkCamera.OnMessage(session, from, r);
+                break;
+            case Kind.Skip:
+            {
+                if (from.PlayerId != _leader) return;
+                _skipFor = (r.GetInt(), r.GetInt());
+                var w = session.BeginMessage(MsgType.Dialogue);
+                w.Put((byte)Kind.Skip);
+                w.Put(_skipFor.gen);
+                w.Put(_skipFor.index);
+                session.Send(w, DeliveryMethod.ReliableOrdered, from.PlayerId);
+                break;
+            }
+            case Kind.Hover:
+            {
+                if (from.PlayerId != _leader) return;
+                _hoverWanted = r.GetInt();
+                var w = session.BeginMessage(MsgType.Dialogue);
+                w.Put((byte)Kind.Hover);
+                w.Put(_hoverWanted);
+                session.Send(w, DeliveryMethod.ReliableOrdered, from.PlayerId);
+                break;
+            }
+            case Kind.Talk:
+            {
+                var act = (Act)r.GetByte();
+                string path = r.GetString();
+                var ui = DialogueUILogic.Instance;
+                if (act != Act.Interact && act != Act.Enter && (ui != null && ui.IsTalking && !ui.currentDialogueIsPassive || DialogueOptionsPanel.IsShowing))
+                {
+                    Plugin.Logger.LogInfo($"Dialogue: {NameTags.NameOf(from.PlayerId)} asked for {act} at {path} mid-conversation; ignored");
+                    return;
+                }
+                var t = ScenePath.Resolve(path);
+                if (t == null) { Plugin.Logger.LogWarning($"Dialogue: {NameTags.NameOf(from.PlayerId)} asked for {act} at {path}, not found here"); return; }
+                // A detector that is on here sees the guest already (DetectorSync); only one the guest's own copy switched on
+                // (picking up the ritual egg switches on the oven's) needs the guest's word for it.
+                if (act == Act.Enter && t.gameObject.activeInHierarchy) return;
+                // Off here: the guest's own state switched it on (the wheel in their arms shows the "found it" talk, which
+                // the host's copy only shows while the host carries it), so it's switched on here too. A once-only scene
+                // that has already run stays off.
+                if (!t.gameObject.activeInHierarchy)
+                {
+                    var once = t.GetComponentInParent<StandaloneDialogue>(true);
+                    if (once != null && once.onlyActivateOnce && once.hasBeenActivated)
+                    {
+                        Plugin.Logger.LogInfo($"Dialogue: {NameTags.NameOf(from.PlayerId)} asked for {act} at {path}, which already ran here; ignored");
+                        return;
+                    }
+                    Plugin.Logger.LogInfo($"Dialogue: {NameTags.NameOf(from.PlayerId)} asked for {act} at {path}, off here; switched on for them: {SwitchOn(t)}");
+                }
+                _requestedBy = from.PlayerId;
+                _requestedAt = Time.unscaledTime;
+                _talkAt = t.position;
+                Plugin.Logger.LogInfo($"Dialogue: {NameTags.NameOf(from.PlayerId)} starts {act} at {path}");
+                if (act == Act.DefaultDialogue) RunDefault(t, r);
+                else Run(act, t);
+                break;
+            }
+        }
+    }
+
+    // Switches on a path's inactive objects, top down; returns their names.
+    private static string SwitchOn(Transform t)
+    {
+        var off = new List<Transform>();
+        for (var x = t; x != null && !x.gameObject.activeInHierarchy; x = x.parent) if (!x.gameObject.activeSelf) off.Add(x);
+        off.Reverse();
+        foreach (var x in off) x.gameObject.SetActive(true);
+        return string.Join(", ", off.Select(x => x.name));
+    }
+
+    private static void Run(Act act, Transform t)
+    {
+        switch (act)
+        {
+            case Act.Say: t.GetComponent<NPC_DialogueManager>()?.SaySomething(); break;
+            case Act.Options: t.GetComponent<NPC_DialogueManager>()?.PresentsDialogueOptions(); break;
+            case Act.Standalone: t.GetComponent<StandaloneDialogue>()?.StartDialogue(); break;
+            case Act.Tutorial: t.GetComponent<TutorialNPCLogic>()?.TriggerInteraction(); break;
+            case Act.PoiDialogue: t.GetComponent<POI_Dialogue>()?.TriggerInteraction(); break;
+            case Act.PoiDialogueOnce: t.GetComponent<POI_Dialogue>()?.TriggerInteractionThanDisableDialogue(); break;
+            case Act.TakeItem: t.GetComponent<GenericPOIFunctions>()?.TakeItemFromPlayer(); break;
+            case Act.BabaTalk: t.GetComponent<BabaYagaStartTalking>()?.StartTalking(); break;
+            case Act.Interact: StoryInteract.Run(t.GetComponent<PlayerDetection>()); break;
+            case Act.Enter: DetectorSync.EnterFor(t.GetComponent<ObjectDetector>(), _requestedBy); break;
+        }
+    }
+
+    // The guest's call, minus its two callbacks (they belong to the guest's copy of whoever called it).
+    private static void RunDefault(Transform t, NetDataReader r)
+    {
+        string key = r.GetString();
+        bool b2 = r.GetBool(), b4 = r.GetBool(), b5 = r.GetBool();
+        var extra = new string[r.GetInt()];
+        for (int i = 0; i < extra.Length; i++) extra[i] = r.GetString();
+        t.GetComponent<DialogueFunctions>()?.StartDefaultDialogue(key, null, b2, new Il2CppSystem.Nullable<DialogueBranch>(), b4, b5,
+            extra.Length > 0 ? new Il2CppStringArray(extra) : null, null);
+    }
+
+    internal static void RequestDefaultTalk(DialogueFunctions c, string key, bool b2, bool b4, bool b5, Il2CppStringArray extra)
+    {
+        var session = CoopDriver.Session;
+        if (session == null || !session.IsConnected) return;
+        var w = session.BeginMessage(MsgType.Dialogue);
+        w.Put((byte)Kind.Talk);
+        w.Put((byte)Act.DefaultDialogue);
+        w.Put(ScenePath.Of(c.transform));
+        w.Put(key ?? "");
+        w.Put(b2); w.Put(b4); w.Put(b5);
+        w.Put(extra?.Length ?? 0);
+        if (extra != null) foreach (var x in extra) w.Put(x ?? "");
+        session.Send(w, DeliveryMethod.ReliableOrdered);
+        Plugin.Logger.LogInfo($"Dialogue: asked the host to start {key} at {ScenePath.Of(c.transform)}");
+    }
+
+    private static DialogueOptionsPanel Panel() =>
+        DialogueOptionsPanel.instance != null ? DialogueOptionsPanel.instance : Object.FindFirstObjectByType<DialogueOptionsPanel>(FindObjectsInactive.Include);
+
+    // Guest: have the host's copy do what the guest just started here.
+    internal static void RequestTalk(Act act, Component c)
+    {
+        var session = CoopDriver.Session;
+        if (session == null || !session.IsConnected) return;
+        var w = session.BeginMessage(MsgType.Dialogue);
+        w.Put((byte)Kind.Talk);
+        w.Put((byte)act);
+        w.Put(ScenePath.Of(c.transform));
+        session.Send(w, DeliveryMethod.ReliableOrdered);
+        Plugin.Logger.LogInfo($"Dialogue: asked the host to {act} at {ScenePath.Of(c.transform)}");
+    }
+
+    // Guest. _leadingTalk: this guest started the conversation on screen; _leading: and is choosing an option now.
+    private static bool _leading, _leadingTalk, _watching, _following;
+    private static int _optionsLeader;
+
+    private static void OnMessage(CoopSession session, NetDataReader r)
+    {
+        switch ((Kind)r.GetByte())
+        {
+            case Kind.Passive:
+            {
+                string name = r.GetString(), title = r.GetString(), text = r.GetString();
+                var ui = DialogueUILogic.Instance;
+                if (InTalkHere || ui != null && ui.IsTalking && !ui.currentDialogueIsPassive) break;  // a real talk is on screen
+                Show(name, title, text);
+                Plugin.Logger.LogInfo($"Dialogue: passive {name}: {text}");
+                break;
+            }
+            case Kind.Line:
+            {
+                _leadingTalk = r.GetInt() == session.LocalPlayerId;
+                _hostLine = (r.GetInt(), r.GetInt());
+                string name = r.GetString(), title = r.GetString(), text = r.GetString();
+                ClosePanel();
+                Follow(name, title, text);
+                Plugin.Logger.LogInfo($"Dialogue: {name}: {text}");
+                break;
+            }
+            case Kind.Options:
+            {
+                int leader = r.GetInt();
+                bool allowExit = r.GetBool();
+                var labels = new List<(string label, bool heard)>();
+                for (int i = r.GetInt(); i > 0; i--) labels.Add((r.GetString(), r.GetBool()));
+                _optionsLeader = leader;
+                _leadingTalk = leader == session.LocalPlayerId;
+                _lastOptions = (labels, allowExit);
+                _hoverWanted = _hoverSent = -1;
+                ShowOptions(session, labels, allowExit, leader == session.LocalPlayerId);
+                break;
+            }
+            case Kind.Chosen:
+            {
+                int leader = r.GetInt();
+                string label = r.GetString();
+                ClosePanel();
+                Plugin.Logger.LogInfo($"Dialogue: {NameTags.NameOf(leader)} chose {label}");
+                break;
+            }
+            case Kind.End:
+                _lastOptions = null;
+                ClosePanel();
+                StopFollowing();
+                _strayUntil = Time.unscaledTime + 3f;
+                Plugin.Logger.LogInfo("Dialogue: conversation over");
+                break;
+            case Kind.Camera:
+                PullIn(r.GetString(), r.GetString());
+                break;
+            case Kind.State:
+                Reconcile(session, (Phase)r.GetByte(), r.GetInt(), (r.GetInt(), r.GetInt()));
+                break;
+            case Kind.Gather:
+                for (int i = r.GetInt(); i > 0; i--)
+                {
+                    int id = r.GetInt();
+                    var pos = new Vector3(r.GetFloat(), r.GetFloat(), r.GetFloat());
+                    float yaw = r.GetFloat();
+                    if (id == session.LocalPlayerId && PlayerSync.InWorld) MoveHere(pos, yaw);
+                }
+                break;
+            case Kind.Cam:
+                TalkCamera.OnMessage(session, null, r);
+                break;
+            case Kind.Skip:
+                _skipFor = (r.GetInt(), r.GetInt());
+                break;
+            case Kind.Hover:
+                _hoverWanted = r.GetInt();
+                break;
+        }
+    }
+
+    private static (int gen, int index) _hostLine = (-1, -1);
+    private static float _idleSince = -1;
+
+    // Guest: whatever this guest shows of the host's conversation must match the host's state; anything left over from
+    // a message that was lost or overtaken is closed.
+    private static void Reconcile(CoopSession session, Phase phase, int leader, (int, int) line)
+    {
+        bool showingOurs = _following || _leading || _watching || _pulledIn;
+        if (phase == Phase.Idle)
+        {
+            // One beat of grace: End and the last line can cross the state in flight.
+            if (!showingOurs) { _idleSince = -1; return; }
+            if (_idleSince < 0) { _idleSince = Time.unscaledTime; return; }
+            if (Time.unscaledTime - _idleSince < 1.5f) return;
+            _idleSince = -1;
+            Plugin.Logger.LogInfo("Dialogue: the host isn't talking any more; closing what was left here");
+            _lastOptions = null;
+            ClosePanel();
+            StopFollowing();
+            return;
+        }
+        _idleSince = -1;
+        _leadingTalk = leader == session.LocalPlayerId;
+        // Our panel closed (or never opened) while the host still waits for our choice.
+        if (phase == Phase.Options && leader == session.LocalPlayerId && !_leading && !DialogueOptionsPanel.IsShowing && _lastOptions != null
+            && Time.unscaledTime - _pickedAt > 2f)
+        {
+            Plugin.Logger.LogInfo("Dialogue: the host waits for our choice; showing the options again");
+            ShowOptions(session, _lastOptions.Value.labels, _lastOptions.Value.allowExit, true);
+        }
+        // We led, and the host chooses now: our panel goes read-only.
+        if (phase == Phase.Options && leader != session.LocalPlayerId && _leading)
+        {
+            _optionsLeader = leader;
+            _leading = false;
+            _watching = true;
+            CoopDriver.Notice($"{NameTags.NameOf(leader)} is choosing what to say.");
+        }
+    }
+
+    private static (List<(string label, bool heard)> labels, bool allowExit)? _lastOptions;
+    private static float _pickedAt = -10;
+
+    // Pulled-in guests who aren't choosing see the same panel, read-only, as the host does when a guest chooses (the
+    // open panel also keeps their dialogue camera on the speaker).
+    private static void ShowOptions(CoopSession session, List<(string label, bool heard)> labels, bool allowExit, bool choosing)
+    {
+        var panel = Panel();
+        if (panel == null) return;
+        _pending = null;
+        CloseLine();  // the panel sits where the line was
+        var ls = new Il2CppSystem.Collections.Generic.List<string>();
+        var callbacks = new Il2CppSystem.Collections.Generic.List<Il2CppSystem.Action>();
+        var heard = new Il2CppSystem.Collections.Generic.List<bool>();
+        for (int i = 0; i < labels.Count; i++)
+        {
+            int index = i;
+            ls.Add(labels[i].label);
+            callbacks.Add((System.Action)(() =>
+            {
+                _leading = false;
+                _pickedAt = Time.unscaledTime;
+                var w = session.BeginMessage(MsgType.Dialogue);
+                w.Put((byte)Kind.Pick);
+                w.Put(index);
+                session.Send(w, DeliveryMethod.ReliableOrdered);
+            }));
+            heard.Add(labels[i].heard);
+        }
+        _leading = choosing;
+        _watching = !choosing;
+        _leadingSince = Time.unscaledTime;
+        panel.Show(ls, callbacks, heard, choosing && allowExit);
+        if (!choosing) CoopDriver.Notice($"{NameTags.NameOf(_optionsLeader)} is choosing what to say.");
+        Plugin.Logger.LogInfo($"Dialogue: {(choosing ? "choosing" : "watching")} from {string.Join(" | ", labels.ConvertAll(l => l.label))}");
+    }
+
+    private static float _leadingSince;
+
+    // Guest: the options panel closed without a pick (left with the back button): the host ends the talk too.
+    private static void WatchLeaving(CoopSession session)
+    {
+        if (!_leading || DialogueOptionsPanel.IsShowing || Time.unscaledTime - _leadingSince < 0.5f) return;
+        _leading = false;
+        _pickedAt = Time.unscaledTime;
+        var w = session.BeginMessage(MsgType.Dialogue);
+        w.Put((byte)Kind.Pick);
+        w.Put(-1);
+        session.Send(w, DeliveryMethod.ReliableOrdered);
+        Plugin.Logger.LogInfo("Dialogue: left the options");
+    }
+
+    private static void ClosePanel()
+    {
+        if (!_leading && !_watching) return;
+        _leading = _watching = false;
+        if (DialogueOptionsPanel.IsShowing) Panel()?.Close();
+    }
+
+    // Guest: the dialogue camera on the local copy of the speaker. The starter's own; for everyone else it's what shows
+    // if the starter's camera stops arriving for a moment.
+    private static DialogueCamera _camera;
+    private static bool _pulledIn;
+    private static Transform _speakerHead;
+    private static string _speaker;
+
+    private static void PullIn(string headPath, string speaker)
+    {
+        var head = ScenePath.Resolve(headPath);
+        var me = Find.One<PlayerMovement_2021>();
+        if (head == null || me == null) { Plugin.Logger.LogInfo($"Dialogue: no speaker at {headPath} here"); return; }
+        float d = Vector3.Distance(head.position, me.transform.position);
+        _camera ??= Object.FindFirstObjectByType<DialogueCamera>(FindObjectsInactive.Include);
+        if (_camera == null) return;
+        _pulledIn = true;
+        _speakerHead = head;
+        _speaker = speaker;
+        Plugin.Logger.LogInfo($"Dialogue: camera on {speaker} ({d:0} m)");
+    }
+
+    private static void LetGo()
+    {
+        if (!_pulledIn) return;
+        _pulledIn = false;
+        if (_camera != null) _camera.Deactivate();
+    }
+
+    // Guest: while following the host's conversation, passive lines don't time out on their own.
+    private static float? _passiveDelay;
+
+    // The newest line waits here until the box has taken the one before it: a request made while the last one is still
+    // starting is dropped (the host's pick and the answer's first line often arrive in the same frame).
+    private static (string name, string title, string text, bool aside)? _pending;
+    private static float _shownAt = -10;
+    private static int _shownGen = -1;
+
+    // aside: a player's choosing or pick, shown as a subtitle so a pulled-in camera stays on the speaker.
+    private static void Follow(string name, string title, string text, bool aside = false)
+    {
+        _pending = (name, title, text, aside);
+        _following = true;
+    }
+
+    private static void ShowPending()
+    {
+        if (_pending is not { } line) return;
+        var ui = DialogueUILogic.Instance;
+        bool settled = ui == null || ui.DialogueGeneration != _shownGen || Time.unscaledTime - _shownAt > 0.3f;
+        if (!settled) return;
+        _pending = null;
+        _shownAt = Time.unscaledTime;
+        _shownGen = ui?.DialogueGeneration ?? -1;
+        FollowNow(line.name, line.title, line.text, line.aside);
+    }
+
+    // Pulled in (or leading the talk), a line is a real one on the guest's dialogue box (camera, input held, continue
+    // prompt): moving past it asks the host for the next. Otherwise it's a subtitle.
+    private static int _lineToken;
+
+    private static void FollowNow(string name, string title, string text, bool aside)
+    {
+        var ui = DialogueUILogic.Instance;
+        if (ui == null) { Show(name, title, text); return; }
+        _passiveDelay ??= ui.delayForPassiveDialogue;
+        ui.delayForPassiveDialogue = 3600f;
+        CloseLine();
+        if (aside) { Show(name, title, text); return; }
+        if (_pulledIn && _camera != null && _speakerHead != null) _camera.Activate(_speakerHead, _speaker);  // the camera takes a speaker only for a line starting in the same frame
+        int token = _lineToken;
+        var line = _hostLine;
+        if (!_leadingTalk) { Show(name, title, text, false); return; }  // held until the host's next line
+        Show(name, title, text, false, () =>
+        {
+            if (token != _lineToken || !_following) return;
+            var session = CoopDriver.Session;
+            if (session == null || !session.IsConnected) return;
+            var w = session.BeginMessage(MsgType.Dialogue);
+            w.Put((byte)Kind.Next);
+            w.Put(line.gen);
+            w.Put(line.index);
+            session.Send(w, DeliveryMethod.ReliableOrdered);
+        });
+    }
+
+    private static void CloseLine()
+    {
+        _lineToken++;
+        var ui = DialogueUILogic.Instance;
+        if (ui == null) return;
+        ui.queue?.Clear();
+        if (ui.IsTalking) ui.ForceCloseDialogue();
+    }
+
+    private static void StopFollowing()
+    {
+        _pending = null;
+        _following = false;
+        _leadingTalk = false;
+        LetGo();
+        var ui = DialogueUILogic.Instance;
+        if (_passiveDelay is not { } delay || ui == null) { _passiveDelay = null; CloseLine(); return; }
+        _passiveDelay = null;
+        ui.delayForPassiveDialogue = delay;
+        CloseLine();
+    }
+
+    // A notice about the talk that's ending (the hut refusing a guest): the end of the talk would close it, so it shows
+    // once the talk is over.
+    private static string _afterTalk;
+
+    internal static void ShowAfterTalk(string text) => _afterTalk = text;
+
+    private static void ShowAfterTalkNow()
+    {
+        if (_afterTalk == null || InTalkHere || Time.unscaledTime < _strayUntil - 2.5f) return;
+        var text = _afterTalk;
+        _afterTalk = null;
+        ShowLocal(text);
+    }
+
+    public static void ShowLocal(string text)
+    {
+        var keep = _lastShown;  // a notice of our own isn't a stray line
+        Show("", "", text);
+        _lastShown = keep;
+    }
+
+    // A line of the host's talk still on screen after it ended (seen once after the hut talk that hands over the
+    // controls: the box stayed up) is closed for a few seconds after the end, and when the host starts driving.
+    private static string _lastShown;
+    private static float _strayUntil;
+
+    internal static void CloseStrayLine()
+    {
+        if (InTalkHere || _lastShown == null) return;
+        var ui = DialogueUILogic.Instance;
+        if (ui == null || !ui.IsTalking || ui.currentDialogue == null) return;
+        int i = ui.indexInDialogue;
+        if (i < 0 || i >= ui.currentDialogue.Length || ui.currentDialogue[i] != _lastShown) return;
+        Plugin.Logger.LogInfo($"Dialogue: closed a line left from the talk: {_lastShown}");
+        _lastShown = null;
+        CloseLine();
+    }
+
+    private static void Show(string name, string title, string text, bool passive = true, System.Action done = null)
+    {
+        if (string.IsNullOrEmpty(text)) return;
+        _lastShown = text;
+        var ui = DialogueUILogic.Instance;
+        if (ui == null) { CoopDriver.Notice(string.IsNullOrEmpty(name) ? text : $"{name}: {text}"); return; }  // e.g. at the main menu
+        Il2CppStringArray One(string s) => new(new[] { s ?? "" });
+        ui.RequestStartDialogue(One(text), One(name), One(title), done, new Il2CppSystem.Nullable<DialogueBranch>(), passive, false, One(""), null);
+    }
+
+    public static string Describe() =>
+        $"leader={_leader} talking={_talking} requestedBy={_requestedBy} following={_following} leading={_leading} pulledIn={_pulledIn} leadingTalk={_leadingTalk} camera: {TalkCamera.Describe()} offered={(_offered == null ? "" : string.Join(" | ", _offered))}";
+
+    public static void LateTick() => TalkCamera.LateTick();
+
+    // Dev (guest): a line left over from the host's conversation, as a lost End would leave it.
+    public static string TestStuck()
+    {
+        _leadingTalk = true;
+        Follow("Tester", "", "A line the host has already moved past.");
+        return "stuck line shown";
+    }
+
+    // Dev: start a short conversation on the host's dialogue box, with options.
+    public static string Test()
+    {
+        var ui = DialogueUILogic.Instance;
+        if (ui == null) return "no dialogue UI";
+        Il2CppStringArray A(params string[] s) => new(s);
+        ui.RequestStartDialogue(A("Co-op test: first line.", "Second line, still talking.", "Last line."), A("Tester", "Tester", "Tester"),
+            A("", "", ""), null, new Il2CppSystem.Nullable<DialogueBranch>(), false, false, A("", "", ""), null);
+        return "dialogue requested";
+    }
+
+    // Dev: open the nearest villager's conversation options, as walking up and talking would.
+    public static string TalkToNearest(string pathPart = null)
+    {
+        var me = RekaCoop.Sync.Find.One<PlayerMovement_2021>();
+        NPC_DialogueManager best = null;
+        float bestD = float.MaxValue;
+        foreach (var npc in Object.FindObjectsByType<NPC_DialogueManager>(FindObjectsSortMode.None))
+        {
+            if (pathPart != null && !GearObjects.PathOf(npc.transform).Contains(pathPart)) continue;
+            float d = (npc.transform.position - me.transform.position).sqrMagnitude;
+            if (d < bestD) { bestD = d; best = npc; }
+        }
+        if (best == null) return "no villager";
+        best.PresentsDialogueOptions();
+        return $"talking to {best.name} at {Mathf.Sqrt(bestD):0} m";
+    }
+
+    public static string TestOptions()
+    {
+        var panel = Object.FindFirstObjectByType<DialogueOptionsPanel>(FindObjectsInactive.Include);
+        if (panel == null) return "no options panel";
+        var labels = new Il2CppSystem.Collections.Generic.List<string>();
+        var callbacks = new Il2CppSystem.Collections.Generic.List<Il2CppSystem.Action>();
+        var heard = new Il2CppSystem.Collections.Generic.List<bool>();
+        foreach (var l in new[] { "Ask about the forest", "Ask about the hut", "Leave" })
+        {
+            labels.Add(l);
+            string picked = l;
+            callbacks.Add((System.Action)(() => Plugin.Logger.LogInfo($"Dialogue test: picked {picked}")));
+            heard.Add(false);
+        }
+        panel.Show(labels, callbacks, heard, true);
+        return "options shown";
+    }
+}
+
+[HarmonyPatch]
+internal static class DialogueHooks
+{
+    [HarmonyPostfix, HarmonyPatch(typeof(DialogueOptionsPanel), nameof(DialogueOptionsPanel.Show))]
+    private static void Show(Il2CppSystem.Collections.Generic.List<string> __0, Il2CppSystem.Collections.Generic.List<bool> __2, bool __3) => DialogueSync.OnOptionsShown(__0, __2, __3);
+
+    [HarmonyPrefix, HarmonyPatch(typeof(DialogueOptionsPanel), nameof(DialogueOptionsPanel.OnOptionPicked))]
+    private static bool Picked(int __0) => DialogueSync.OnOptionPicked(__0);
+
+    [HarmonyPrefix, HarmonyPatch(typeof(DialogueUILogic), nameof(DialogueUILogic.WaitForPlayerInputThenDoSth))]
+    private static void Waiting(DialogueUILogic __instance, ref Il2CppSystem.Action __0) => DialogueSync.OnWaitingForContinue(__instance, ref __0);
+
+    [HarmonyPostfix, HarmonyPatch(typeof(Febucci.TextAnimatorForUnity.TypewriterComponent), nameof(Febucci.TextAnimatorForUnity.TypewriterComponent.SkipTypewriter))]
+    private static void Skipped(Febucci.TextAnimatorForUnity.TypewriterComponent __instance) => DialogueSync.OnSkipped(__instance);
+
+    [HarmonyPostfix, HarmonyPatch(typeof(DialogueCamera), nameof(DialogueCamera.Activate), typeof(Transform), typeof(string), typeof(DialogueShotFamilyOverride), typeof(Transform))]
+    private static void CameraOn(Transform __0, string __1) => DialogueSync.OnCameraActivated(__0, __1);
+
+    // A guest's own copy of a villager, story dialogue or hand-in doesn't run: the host's copy does it for everyone.
+    [HarmonyPrefix, HarmonyPatch(typeof(NPC_DialogueManager), nameof(NPC_DialogueManager.SaySomething))]
+    private static bool Say(NPC_DialogueManager __instance) => DialogueSync.Personal(__instance) || Local(DialogueSync.Act.Say, __instance);
+
+    [HarmonyPrefix, HarmonyPatch(typeof(NPC_DialogueManager), nameof(NPC_DialogueManager.PresentsDialogueOptions), new System.Type[0])]
+    private static bool Options(NPC_DialogueManager __instance) => DialogueSync.Personal(__instance) || Local(DialogueSync.Act.Options, __instance);
+
+    [HarmonyPrefix, HarmonyPatch(typeof(StandaloneDialogue), nameof(StandaloneDialogue.StartDialogue))]
+    private static bool Standalone(StandaloneDialogue __instance)
+    {
+        // A new map's arrival talk runs on the host when it arrives. A guest loads that map later and its copy raises
+        // the talk again: asking the host replayed it there, and its chained line started on the guest alone (hung).
+        if (WorldSync.IsGuest && __instance.name.StartsWith("MapIntro"))
+        {
+            Plugin.Logger.LogInfo($"Dialogue: {__instance.name} is the host's arrival talk; not raised here");
+            return false;
+        }
+        return __instance.isPassiveDialogue || Local(DialogueSync.Act.Standalone, __instance);
+    }
+
+    [HarmonyPrefix, HarmonyPatch(typeof(TutorialNPCLogic), nameof(TutorialNPCLogic.TriggerInteraction))]
+    private static bool Tutorial(TutorialNPCLogic __instance) => Local(DialogueSync.Act.Tutorial, __instance);
+
+    [HarmonyPrefix, HarmonyPatch(typeof(POI_Dialogue), nameof(POI_Dialogue.TriggerInteraction))]
+    private static bool PoiDialogue(POI_Dialogue __instance) => Local(DialogueSync.Act.PoiDialogue, __instance);
+
+    [HarmonyPrefix, HarmonyPatch(typeof(POI_Dialogue), nameof(POI_Dialogue.TriggerInteractionThanDisableDialogue))]
+    private static bool PoiDialogueOnce(POI_Dialogue __instance) => Local(DialogueSync.Act.PoiDialogueOnce, __instance);
+
+    // The old woman's talks start on their own triggers, not the dialogue components above, so the mod never saw a
+    // guest start one (the host wasn't brought over).
+    [HarmonyPrefix, HarmonyPatch(typeof(BabaYagaStartTalking), nameof(BabaYagaStartTalking.StartTalking))]
+    private static bool BabaTalk(BabaYagaStartTalking __instance) => Local(DialogueSync.Act.BabaTalk, __instance);
+
+    // The lowest common start: an NPC's own scripts (the old woman's AI coming to the door once the talisman is taken)
+    // call it directly, so none of the hooks above see it. The ones above end here too, but on a guest they've already
+    // been sent to the host and don't run.
+    [HarmonyPrefix, HarmonyPatch(typeof(DialogueFunctions), nameof(DialogueFunctions.StartDefaultDialogue), typeof(string), typeof(Il2CppSystem.Action), typeof(bool), typeof(Il2CppSystem.Nullable<DialogueBranch>), typeof(bool), typeof(bool), typeof(Il2CppStringArray), typeof(Il2CppSystem.Action))]
+    private static bool DefaultDialogue(DialogueFunctions __instance, string __0, bool __2, bool __4, bool __5, Il2CppStringArray __6)
+    {
+        if (!WorldSync.IsGuest || DialogueSync.Personal(__instance)) return true;
+        if (!WorldObjects.ApplyingRemote) DialogueSync.RequestDefaultTalk(__instance, __0, __2, __4, __5, __6);
+        return false;
+    }
+
+    [HarmonyPrefix, HarmonyPatch(typeof(GenericPOIFunctions), nameof(GenericPOIFunctions.TakeItemFromPlayer))]
+    private static bool TakeItem(GenericPOIFunctions __instance)
+    {
+        // Not enough in the shared pack: the game's own "you don't have" line, on this screen, not the host's.
+        if (WorldSync.IsGuest && __instance.takeItem != null && Find.One<InventoryManager>() is { } m
+            && m.GetItemAmount(__instance.takeItem) < System.Math.Max(1, __instance.amountofItems)) return true;
+        return Local(DialogueSync.Act.TakeItem, __instance);
+    }
+
+    private static bool Local(DialogueSync.Act act, Component c)
+    {
+        if (!WorldSync.IsGuest) return true;
+        if (!WorldObjects.ApplyingRemote) DialogueSync.RequestTalk(act, c);  // applying the host's state replays what already happened there
+        return false;
+    }
+}

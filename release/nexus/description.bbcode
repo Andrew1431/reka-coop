@@ -1,0 +1,95 @@
+[center][size=6][b]Reka Co-op[/b][/size]
+[size=4]Play Reka together with friends. [color=#e0b04f][b]Experimental alpha[/b][/color][/size][/center]
+
+[size=4][b]What this is[/b][/size]
+Reka Co-op lets friends share one Reka world. One player hosts, and their save is the world. Friends join over Steam invites and walk, gather, talk and build in it together. The story runs on the host's game, and everyone sees the same world, weather, talks, choices and quest popups.
+
+Tested with 2 players. Built for up to 4.
+
+[color=#e0b04f][b]This is an early alpha.[/b][/color] Expect bugs, things out of sync between players, and the odd soft lock. [b]Back up your saves before playing[/b] (see Install). The mod keeps guests' saves apart and only the host's game writes the world, but an alpha is an alpha.
+
+[size=4][b]Requirements[/b][/size]
+[list]
+[*]Reka [b]1.0.25[/b] (the Steam build from 29 October 2026, "Hotfix 2"). Each mod release names the game version it was tested on. After a game update, wait for a matching mod release.
+[*]BepInEx 6 (IL2CPP), included in the download.
+[*]Everyone in a session needs the same mod version. Anyone on a different version is turned away with a message saying so.
+[/list]
+
+[size=4][b]How far it's been tested[/b][/size]
+[img]PROGRESS_CHART_URL[/img]
+
+[b]Confirmed working through the prologue[/b], up to getting your chicken-legged hut: Baba Yaga's lessons, the talisman, the Trial of the Chicken, the hut standing up and the first trip beyond the fog. Past that point it may well work, but we haven't played it together yet. That's where you come in.
+
+[spoiler]
+[b]Tested and working[/b]
+[list]
+[*]Joining over Steam invites. Friends join once the host is in their world; the world loads by itself.
+[*]Seeing each other: movement, looks, names, gear
+[*]One shared backpack, pickups, chopping
+[*]Talks: whoever starts one leads it and picks the answers; everyone else watches
+[*]Story choices, quest, chapter and unlock popups shown to everyone
+[*]Tutorial steps: any player can advance them for everyone
+[*]Carrying and dropping objects
+[*]Weather, time of day and cinematics
+[*]Map highlights shared by everyone
+[/list]
+[b]Works, with known issues[/b]
+[list]
+[*]The hut's legs can loop a short animation on guests' screens while it walks
+[*]When the hut sits down, guests may still see trees around its base
+[*]Other players don't see the glow of a raised lantern (they do see its flame)
+[*]The first talk right after travelling can start oddly
+[*]Building works. The building tutorial is always skipped in co-op.
+[/list]
+[b]Not tested yet[/b]
+[list]
+[*]Everything after the prologue
+[*]Merchants (offers and buying)
+[*]3 and 4 players
+[*]Joining by IP over the internet
+[*]Guests driving the hut
+[/list]
+[/spoiler]
+
+[size=4][b]You're helping finish it[/b][/size]
+Everyone playing the alpha helps finish co-op. Every session shows us something we haven't seen yet: a quest that breaks, a talk that gets stuck, a popup only one player sees. Each release fixes what testers ran into, and every fix moves an item up the chart.
+
+[b]Automatic bug reports (alpha only)[/b]
+During the alpha the mod sends a short report from each session: when you quit, after a crash (on the next start), and when you press [b]F8[/b]. These reports are what let us find and fix problems from everyone's games, not just ours.
+[list]
+[*][b]Sent:[/b] the mod's own log lines, its out-of-sync notes, the mod, game and protocol versions, basic session details (host or guest, number of players, ping, frame rate) and a random tester id.
+[*][b]Removed before sending:[/b] player and Steam names (they become "player 1", "player 2"), Steam ids, your Windows user name, PC name and IP addresses. [b]Your saves are never sent.[/b]
+[*][b]Where:[/b] storage run by the mod's developer, used only to fix the mod. Reports are deleted after RETENTION.
+[*][b]You choose:[/b] the first start shows a notice before anything is sent, with a button to turn reports off. You can switch them off any time later in the config file.
+[*][b]Alpha only:[/b] automatic reporting won't be part of the polished co-op release.
+[/list]
+
+[b]Tell us what happened[/b]
+[list]
+[*][b]In game:[/b] press [b]F8[/b], type a line about what went wrong (or what you think should happen instead) and press Enter. Everyone in the session sends their log under the same report, so we can see it from every side.
+[*][b]Here:[/b] use the [b]Bugs[/b] tab for anything broken. Say what you were doing, whether you were the host or a guest, and what each player saw.
+[*][b]Ideas and suggested fixes:[/b] post them in the [b]Posts[/b] tab or on Discord. We read them all and collect them for later releases.
+[*][b]Discord:[/b] [url=https://discord.gg/EeuAr9yZYY]discord.gg/EeuAr9yZYY[/url] for bugs, ideas and finding people to play with.
+[*][b]Source code:[/b] [url=https://github.com/Andrew1431/reka-coop]github.com/Andrew1431/reka-coop[/url] (free to use, change and share).
+[/list]
+
+[size=4][b]Install[/b][/size]
+No launch options, ports or IP addresses: install it and play.
+[list=1]
+[*][b]Back up your saves first:[/b] copy [i]%AppData%\RekaGame\Saves[/i] somewhere safe.
+[*]In Steam, right-click Reka > Manage > Browse local files. This opens the game folder (it has Reka.exe).
+[*]Copy everything from the download into that folder.
+[*]Start the game once and wait at the main menu. The first start takes a few minutes while BepInEx sets up. Later starts are normal speed.
+[/list]
+[b]Turn it off and on:[/b] run [i]Disable Co-op[/i] or [i]Enable Co-op[/i] in the game folder. [i]Uninstall Co-op[/i] removes the mod and BepInEx. None of them touch your saves.
+
+[size=4][b]Play together[/b][/size]
+[b]Host:[/b] load your save (or start a new one). Once you're in your world, friends can join you: invite them from the Steam overlay (Shift+Tab), or they click [i]Join Game[/i] on you in their friends list.
+[b]Guests:[/b] be at Reka's main menu (or have it closed) and accept the invite. The host's world loads by itself. Guests never save, and your own saves are never touched.
+If the host goes back to the main menu (to load another save, for example), everyone else goes back to theirs. Join again from Steam once the host is back in a world.
+
+[size=4][b]Made with AI[/b][/size]
+The mod's code was written by an AI (Claude, by Anthropic), directed, playtested and reviewed by the mod's author. Nothing is marked tested until we've played it together, and bugs get reported and fixed the same way as in any other mod.
+
+[size=4][b]Not affiliated[/b][/size]
+This is a fan-made mod. It isn't made or supported by Reka's developers, so please don't send them co-op bugs. Send them here.
