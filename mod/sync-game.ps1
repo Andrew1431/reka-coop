@@ -11,7 +11,9 @@ if (Get-Process Reka -ErrorAction SilentlyContinue) { throw 'Close every Reka fi
 $gameRoot = Join-Path $PSScriptRoot '..\game' | Resolve-Path
 if (-not $Instances) { $Instances = Get-ChildItem -LiteralPath $gameRoot -Directory | Where-Object { Test-Path (Join-Path $_.FullName 'Reka.exe') } | Select-Object -ExpandProperty Name }
 
-$steamFiles = Get-ChildItem -LiteralPath $Steam -Recurse -File
+# The Steam folder may have Reka Co-op installed (a release playtest): those files never go into the dev copies.
+$modFiles = '^(BepInEx|dotnet|_RekaCoop_removed)\\|^(winhttp\.dll|doorstop_config\.ini|\.doorstop_version|changelog\.txt|README-RekaCoop\.txt|[^\\]+\.bat)$'
+$steamFiles = Get-ChildItem -LiteralPath $Steam -Recurse -File | Where-Object { $_.FullName.Substring($Steam.Length).TrimStart('\') -notmatch $modFiles }
 foreach ($inst in $Instances) {
     $root = Join-Path $gameRoot $inst
     $linked = 0

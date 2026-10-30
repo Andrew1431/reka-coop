@@ -27,6 +27,7 @@ public class Plugin : BasePlugin
         var harmony = new Harmony(PluginGuid);
         Il2CppFixes.Apply(harmony);
         SaveIsolation.Apply();
+        SaveBackup.Run();
         Diagnostics.Reporter.PatchAll(harmony);
 
         ClassInjector.RegisterTypeInIl2Cpp<CoopDriver>();
