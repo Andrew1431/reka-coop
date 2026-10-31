@@ -21,6 +21,10 @@ public static class WorldSync
 
     internal static bool IsGuest => CoopDriver.Session?.Role == Role.Client;
 
+    // The loaded world is a host's, from the moment a guest is in it until the main menu is back, even after the
+    // session ended: leaving it can save on the way out, by which time we're our own host again with our own saves.
+    internal static bool HostsWorldLoaded;
+
     public static void Attach(CoopSession session)
     {
         session.Message += (from, type, r) => { if (type == MsgType.Weather) OnWeather(r); };

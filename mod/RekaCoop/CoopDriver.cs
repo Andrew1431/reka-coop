@@ -100,6 +100,7 @@ public class CoopDriver : MonoBehaviour
                 if ((Session.LocalName == DefaultName || Session.LocalName == Instance.Name) && SteamName() is string steamName) Session.LocalName = steamName;
                 Session.Poll();
                 WatchGuestQuit();
+                WatchHostsWorld();
                 WatchHosting();
                 Steam.SteamLobby.Tick(Session, _net);
                 Sync.PlayerSync.Tick(Session);
@@ -192,7 +193,18 @@ public class CoopDriver : MonoBehaviour
             var pause = FindFirstObjectByType<PauseMenu>(FindObjectsInactive.Include);
             if (pause != null) pause.BackToMainMenu();
         }
-        if (Instance.Auto) StartHosting();
+        if (Instance.Auto) _hostAtMenu = true;  // our own saves only once the host's world is gone (WatchHostsWorld)
+    }
+
+    private bool _hostAtMenu;
+
+    private void WatchHostsWorld()
+    {
+        if (Session.Role == Role.Client && Sync.PlayerSync.InWorld) Sync.WorldSync.HostsWorldLoaded = true;
+        if (!Sync.MenuWatch.Up) return;
+        if (Sync.WorldSync.HostsWorldLoaded) Plugin.Logger.LogInfo("Saves: the host's world is unloaded");
+        Sync.WorldSync.HostsWorldLoaded = false;
+        if (_hostAtMenu) { _hostAtMenu = false; StartHosting(); }
     }
 
     // Not the Windows user name: that would show on the host's screen.

@@ -494,10 +494,10 @@ internal static class GuestMenuWaits
 internal static class GuestNeverSaves
 {
     [HarmonyPrefix, HarmonyPatch(nameof(SaveLoadGame.SaveCurrentSaveGame))]
-    private static bool SaveCurrentSaveGame() => !WorldSync.IsGuest;
+    private static bool SaveCurrentSaveGame() => !WorldSync.IsGuest && !WorldSync.HostsWorldLoaded;
 
     [HarmonyPrefix, HarmonyPatch(nameof(SaveLoadGame.DoSpecialSave))]
-    private static bool DoSpecialSave() => !WorldSync.IsGuest;
+    private static bool DoSpecialSave() => !WorldSync.IsGuest && !WorldSync.HostsWorldLoaded;
 }
 
 // A guest's pause menu shows Save greyed out (it would do nothing: the host saves the shared world).
