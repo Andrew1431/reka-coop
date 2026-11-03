@@ -189,6 +189,7 @@ public static class DialogueSync
         if (session.Role != Role.Host || !session.IsConnected) return;
         var ui = DialogueUILogic.Instance;
         if (ui == null) return;
+        RunPendingDefault(ui);
         bool talking = ui.IsTalking && !ui.currentDialogueIsPassive && ui.currentDialogue != null;
         if (_personal)
         {
@@ -521,7 +522,7 @@ public static class DialogueSync
                 _requestedAt = Time.unscaledTime;
                 _talkAt = t.position;
                 Plugin.Logger.LogInfo($"Dialogue: {NameTags.NameOf(from.PlayerId)} starts {act} at {path}");
-                if (act == Act.DefaultDialogue) RunDefault(t, r);
+                if (act == Act.DefaultDialogue) DeferDefault(t, r);
                 else Run(act, t);
                 break;
             }
@@ -555,15 +556,51 @@ public static class DialogueSync
         }
     }
 
-    // The guest's call, minus its two callbacks (they belong to the guest's copy of whoever called it).
-    private static void RunDefault(Transform t, NetDataReader r)
+    // The guest's call, minus its two callbacks (they belong to the guest's copy of whoever called it). Those callbacks
+    // are often what moves the story on: the old woman's AI starts her talk at the door and opens the yard gate when it
+    // ends, so a talk started here without them left the gate shut for good. An NPC's AI usually sees the guest here
+    // only notices the host's own player, and only right where the guest set it off, so while the guest's version
+    // waits the host stands where the guest stands; the host's AI then starts the same talk itself, callbacks and all.
+    // The guest's version only runs if nothing started by then.
+    private const float DefaultWait = 3f;
+    private static (Transform t, string key, bool b2, bool b4, bool b5, string[] extra, float due)? _pendingDefault;
+
+    private static void DeferDefault(Transform t, NetDataReader r)
     {
         string key = r.GetString();
         bool b2 = r.GetBool(), b4 = r.GetBool(), b5 = r.GetBool();
         var extra = new string[r.GetInt()];
         for (int i = 0; i < extra.Length; i++) extra[i] = r.GetString();
-        t.GetComponent<DialogueFunctions>()?.StartDefaultDialogue(key, null, b2, new Il2CppSystem.Nullable<DialogueBranch>(), b4, b5,
-            extra.Length > 0 ? new Il2CppStringArray(extra) : null, null);
+        _pendingDefault = (t, key, b2, b4, b5, extra, Time.unscaledTime + DefaultWait);
+        _requestedAt = Time.unscaledTime + DefaultWait;  // the talk the host's AI starts is still the guest's to lead
+        StandWithRequester();
+    }
+
+    private static float _nextStand;
+
+    private static void StandWithRequester()
+    {
+        _nextStand = Time.unscaledTime + 0.5f;
+        var them = _requestedBy != Me ? PlayerSync.PuppetRoot(_requestedBy) : null;
+        if (them != null) MoveHere(them.position + them.right * 0.4f, them.eulerAngles.y);
+    }
+
+    private static void RunPendingDefault(DialogueUILogic ui)
+    {
+        if (_pendingDefault is not { } p) return;
+        if (ui.IsTalking && !ui.currentDialogueIsPassive)
+        {
+            _pendingDefault = null;
+            Plugin.Logger.LogInfo($"Dialogue: {p.key} started here by itself; the guest's copy of it isn't needed");
+            return;
+        }
+        if (Time.unscaledTime < p.due) { if (Time.unscaledTime >= _nextStand) StandWithRequester(); return; }
+        _pendingDefault = null;
+        if (p.t == null) return;
+        Plugin.Logger.LogInfo($"Dialogue: nothing here started {p.key}; starting the guest's copy (without its callbacks)");
+        _requestedAt = Time.unscaledTime;  // still theirs to lead
+        p.t.GetComponent<DialogueFunctions>()?.StartDefaultDialogue(p.key, null, p.b2, new Il2CppSystem.Nullable<DialogueBranch>(), p.b4, p.b5,
+            p.extra.Length > 0 ? new Il2CppStringArray(p.extra) : null, null);
     }
 
     internal static void RequestDefaultTalk(DialogueFunctions c, string key, bool b2, bool b4, bool b5, Il2CppStringArray extra)

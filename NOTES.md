@@ -400,3 +400,9 @@ Playbook: https://github.com/cranebeaker/coop-anything (AGENTS.md). Personal Bep
 - Facepunch lobby methods: callable (CreateLobbyAsync, SetData/GetData, rich presence verified).
 - World gen deterministic from seed?
 - Save parts compressed?
+
+## Guest-started NPC talks keep the game's callbacks (2026-11-03, Reka 1.0.32)
+- Baba Jaga's door talk is started by her AI (`GeneralAIController`, set by `Baba Jaga_AtHome/PlayerDetector` → `POI_AIFunctions.SetAIBehaviour`) through `DialogueFunctions.StartDefaultDialogue(key, onFinished, ...)`. The AI's `onFinished` is what opens the yard gate (`AnimatedHingeJoint.Unlock/Open` on `FenceDoor`, `Tutorial_FenceGateLock` completed).
+- A guest's copy blocked that call and the host replayed it without callbacks (they belong to the guest's copy), so a guest-led door talk left the gate shut on both: softlock. Host-led talks were fine.
+- Now the host holds a guest's `StartDefaultDialogue` for up to 3 s and stands the host's player on the guest's puppet meanwhile; the host's AI notices its own player and starts the same talk with its callbacks, and the guest's copy is dropped ("started here by itself"). Only if nothing starts does the callback-less replay run. Verified with a guest-led door talk: gate opened on the host and, through the gate sync, on the guest.
+- 1.0.32 also made the gate save its own state and added a journal-pending path (`OpenAfterJournal`, `OPEN_DELAY_AFTER_JOURNAL_SECONDS`). Dev: `gates`, `[gate]` trace lines.

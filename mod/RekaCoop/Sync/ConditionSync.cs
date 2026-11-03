@@ -165,7 +165,14 @@ internal static class GateTrace
     private static void HingeClose(AnimatedHingeJoint __instance) { if (__instance.name == "FenceDoor") Log("hinge Close", __instance); }
 
     [HarmonyPostfix, HarmonyPatch(typeof(AnimatedHingeJoint), nameof(AnimatedHingeJoint.Unlock))]
-    private static void HingeUnlock(AnimatedHingeJoint __instance) { if (__instance.name == "FenceDoor") Log("hinge Unlock", __instance); }
+    private static void HingeUnlock(AnimatedHingeJoint __instance)
+    {
+        if (__instance.name != "FenceDoor") return;
+        string stack;
+        try { stack = new Il2CppSystem.Diagnostics.StackTrace().ToString().Replace("\n", " < "); }
+        catch (System.Exception e) { stack = e.GetType().Name; }
+        Log($"hinge Unlock at t={UnityEngine.Time.time:0.0} from {stack}", __instance);
+    }
 
     [HarmonyPostfix, HarmonyPatch(typeof(AnimatedHingeJoint), nameof(AnimatedHingeJoint.Lock))]
     private static void HingeLock(AnimatedHingeJoint __instance) { if (__instance.name == "FenceDoor") Log("hinge Lock", __instance); }
