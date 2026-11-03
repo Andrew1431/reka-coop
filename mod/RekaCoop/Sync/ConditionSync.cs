@@ -141,3 +141,32 @@ internal static class ConditionHooks
     [HarmonyPostfix, HarmonyPatch(typeof(Tutorial_FenceGateLock), nameof(Tutorial_FenceGateLock.Open))]
     private static void GateOpen(Tutorial_FenceGateLock __instance) => ConditionSync.LocalGate(__instance, true);
 }
+
+// What opens and closes the yard gate, on each copy (1.0.32 added a lock that opens after the journal).
+[HarmonyPatch]
+internal static class GateTrace
+{
+    private static void Log(string what, UnityEngine.Component c) =>
+        Plugin.Logger.LogInfo($"[gate] {what} {ScenePath.Of(c.transform)}");
+
+    [HarmonyPostfix, HarmonyPatch(typeof(Tutorial_FenceGateLock), nameof(Tutorial_FenceGateLock.TryOpen))]
+    private static void TryOpen(Tutorial_FenceGateLock __instance) => Log($"TryOpen (pending={__instance.openPending} completed={__instance.isCompleted})", __instance);
+
+    [HarmonyPostfix, HarmonyPatch(typeof(Tutorial_FenceGateLock), nameof(Tutorial_FenceGateLock.OpenAfterJournal))]
+    private static void AfterJournal(Tutorial_FenceGateLock __instance) => Log("OpenAfterJournal", __instance);
+
+    [HarmonyPostfix, HarmonyPatch(typeof(Tutorial_FenceGateLock), nameof(Tutorial_FenceGateLock.OnLoadedInternal))]
+    private static void Loaded(Tutorial_FenceGateLock __instance, bool loadedAsCompleted) => Log($"loaded completed={loadedAsCompleted}", __instance);
+
+    [HarmonyPostfix, HarmonyPatch(typeof(AnimatedHingeJoint), nameof(AnimatedHingeJoint.Open))]
+    private static void HingeOpen(AnimatedHingeJoint __instance) { if (__instance.name == "FenceDoor") Log($"hinge Open (locked={__instance.isLocked})", __instance); }
+
+    [HarmonyPostfix, HarmonyPatch(typeof(AnimatedHingeJoint), nameof(AnimatedHingeJoint.Close))]
+    private static void HingeClose(AnimatedHingeJoint __instance) { if (__instance.name == "FenceDoor") Log("hinge Close", __instance); }
+
+    [HarmonyPostfix, HarmonyPatch(typeof(AnimatedHingeJoint), nameof(AnimatedHingeJoint.Unlock))]
+    private static void HingeUnlock(AnimatedHingeJoint __instance) { if (__instance.name == "FenceDoor") Log("hinge Unlock", __instance); }
+
+    [HarmonyPostfix, HarmonyPatch(typeof(AnimatedHingeJoint), nameof(AnimatedHingeJoint.Lock))]
+    private static void HingeLock(AnimatedHingeJoint __instance) { if (__instance.name == "FenceDoor") Log("hinge Lock", __instance); }
+}

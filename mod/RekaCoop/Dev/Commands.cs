@@ -874,6 +874,10 @@ internal static class Commands
             return "message queued";
         }
         // map [id 0|1]: compass elements highlighted here, or highlight one the way the game does
+        if (a[0] == "gates")
+            return string.Join(" | ", UnityEngine.Object.FindObjectsByType<Tutorial_FenceGateLock>(FindObjectsInactive.Include, FindObjectsSortMode.None)
+                .Select(g => $"{Sync.ScenePath.Of(g.transform)} active={g.isActiveAndEnabled} completed={g.isCompleted} pending={g.openPending} " +
+                             (g.gate == null ? "no hinge" : $"open={g.gate._isOpen} locked={g.gate.isLocked} progress={g.gate.currentProgressInSeconds:0.00}")));
         if (a[0] == "map") { if (a.Length > 2) CompassLogic.SetHighlight(string.Join(" ", a.Skip(1).Take(a.Length - 2)), a[^1] == "1"); return Sync.MapSync.Describe(); }
         if (a[0] == "tutorial") return Sync.TutorialSync.Describe();
         if (a[0] == "skiptask") { UnityEngine.Object.FindFirstObjectByType<TasksTracker>().SkipNextTask(); return Sync.TrialSync.Describe(); }
