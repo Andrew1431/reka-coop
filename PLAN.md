@@ -45,3 +45,8 @@ Each phase ends with the scripted run in phase 0 passing, host-led and guest-led
 - The host's game may cull or throttle logic far from the host's own player (`AnimatorDistanceThrottle` does for animation). If a place doesn't run with only a guest there, it needs to be kept awake for acting players.
 - Callbacks held in memory mid-scene are lost if the host reloads. Same as single player.
 - Guest actions gain a round trip. Fine on Steam relay for interactions; movement stays local.
+
+## Progress
+
+- 2026-11-09 **Phase 0 done.** `python mod/regress.py` (fixture `local/saves/pre-door-1.0.32`, a new game just after the intro; steps to make one are in the script's header). Scenario `door`: both pass, host-led and guest-led. Found on the way: `TalkCamera` threw once per session (`Application.onBeforeRender` is stripped; hook removed), and a guest who crossed any detector in the last 10 s leads a talk the host started (goes with phase 2).
+- 2026-11-09 **Phase 1 done.** `Sync/Intents.cs`, message `Intent` (protocol 55): Interact, Enter, Call (the eight entry points a guest's copy still reaches by itself), DefaultTalk. `Intents.Actor` is the guest whose intent is running. Pick and Next stay with the conversation (leader only). Behaviour unchanged; the run passes both ways.

@@ -82,7 +82,6 @@ internal static class TalkCamera
             _shownPos = _cam.transform.position;
             _shownRot = _cam.transform.rotation;
             _shownFov = _cam.fieldOfView;
-            Hook();
             Plugin.Logger.LogInfo("Dialogue: showing the starter's camera");
         }
         float k = _snap ? 1f : 1f - Mathf.Exp(-25f * Time.unscaledDeltaTime);
@@ -98,22 +97,13 @@ internal static class TalkCamera
     private static Vector3 _shownPos;
     private static Quaternion _shownRot = Quaternion.identity;
     private static float _shownFov = 35f;
-    private static bool _hooked;
 
-    // The game's own camera scripts still move the main camera after LateUpdate; the pose goes on again right before
-    // the frame is drawn.
+    // (Application.onBeforeRender is stripped from this build, so the pose can't go on again right before the draw.)
     private static void Apply()
     {
         if (!_overriding || _cam == null) return;
         _cam.transform.SetPositionAndRotation(_shownPos, _shownRot);
         _cam.fieldOfView = _shownFov;
-    }
-
-    private static void Hook()
-    {
-        if (_hooked) return;
-        _hooked = true;
-        Application.add_onBeforeRender(Il2CppInterop.Runtime.DelegateSupport.ConvertDelegate<UnityEngine.Events.UnityAction>(new System.Action(Apply)));
     }
 
     public static void Release()

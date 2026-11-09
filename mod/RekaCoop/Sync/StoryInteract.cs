@@ -43,7 +43,7 @@ public static class StoryInteract
         // Pressing the key can come through more than one of the hooked calls.
         if (SentAt.TryGetValue(pd.Pointer, out var at) && Time.unscaledTime - at < 1f) return false;
         SentAt[pd.Pointer] = Time.unscaledTime;
-        DialogueSync.RequestTalk(DialogueSync.Act.Interact, pd);
+        Intents.Send(Intents.Kind.Interact, pd);
         return false;
     }
 

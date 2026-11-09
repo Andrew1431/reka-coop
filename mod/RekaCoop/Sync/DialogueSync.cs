@@ -27,7 +27,7 @@ public static class DialogueSync
     {
         Line = 1, Options = 2, Chosen = 3, End = 4,  // host -> guests
         Camera = 5,                                    // host -> guests: speaker head path, speaker name
-        Pick = 6, Next = 7, Talk = 8,                  // guest -> host
+        Pick = 6, Next = 7,                            // guest -> host (8 was Talk: now MsgType.Intent)
         State = 9,                                     // host -> guests, every second: where the conversation is
         Gather = 10,                                   // host -> guests: where each player stands for the talk
         Cam = 11,                                      // the starter's camera pose (a guest's goes through the host)
@@ -39,9 +39,6 @@ public static class DialogueSync
     // The conversation as the host has it. Guests check theirs against it every second, so a lost or late message
     // can't leave anyone stuck in a line, a camera or an options panel.
     private enum Phase : byte { Idle = 0, Line = 1, Options = 2 }
-
-    // What a guest asked the host's copy to do; see DialogueHooks.
-    internal enum Act : byte { Say = 1, Options = 2, Standalone = 3, Tutorial = 4, PoiDialogue = 5, PoiDialogueOnce = 6, TakeItem = 7, BabaTalk = 8, DefaultDialogue = 9, Interact = 10, Enter = 11 }
 
     private const float RequestWindow = 3f, NextCooldown = 0.3f, StateEvery = 1f;
 
@@ -490,43 +487,41 @@ public static class DialogueSync
                 session.Send(w, DeliveryMethod.ReliableOrdered, from.PlayerId);
                 break;
             }
-            case Kind.Talk:
-            {
-                var act = (Act)r.GetByte();
-                string path = r.GetString();
-                var ui = DialogueUILogic.Instance;
-                if (act != Act.Interact && act != Act.Enter && (ui != null && ui.IsTalking && !ui.currentDialogueIsPassive || DialogueOptionsPanel.IsShowing))
-                {
-                    Plugin.Logger.LogInfo($"Dialogue: {NameTags.NameOf(from.PlayerId)} asked for {act} at {path} mid-conversation; ignored");
-                    return;
-                }
-                var t = ScenePath.Resolve(path);
-                if (t == null) { Plugin.Logger.LogWarning($"Dialogue: {NameTags.NameOf(from.PlayerId)} asked for {act} at {path}, not found here"); return; }
-                // A detector that is on here sees the guest already (DetectorSync); only one the guest's own copy switched on
-                // (picking up the ritual egg switches on the oven's) needs the guest's word for it.
-                if (act == Act.Enter && t.gameObject.activeInHierarchy) return;
-                // Off here: the guest's own state switched it on (the wheel in their arms shows the "found it" talk, which
-                // the host's copy only shows while the host carries it), so it's switched on here too. A once-only scene
-                // that has already run stays off.
-                if (!t.gameObject.activeInHierarchy)
-                {
-                    var once = t.GetComponentInParent<StandaloneDialogue>(true);
-                    if (once != null && once.onlyActivateOnce && once.hasBeenActivated)
-                    {
-                        Plugin.Logger.LogInfo($"Dialogue: {NameTags.NameOf(from.PlayerId)} asked for {act} at {path}, which already ran here; ignored");
-                        return;
-                    }
-                    Plugin.Logger.LogInfo($"Dialogue: {NameTags.NameOf(from.PlayerId)} asked for {act} at {path}, off here; switched on for them: {SwitchOn(t)}");
-                }
-                _requestedBy = from.PlayerId;
-                _requestedAt = Time.unscaledTime;
-                _talkAt = t.position;
-                Plugin.Logger.LogInfo($"Dialogue: {NameTags.NameOf(from.PlayerId)} starts {act} at {path}");
-                if (act == Act.DefaultDialogue) DeferDefault(t, r);
-                else Run(act, t);
-                break;
-            }
         }
+    }
+
+    // Host: a guest's intent (see Intents) is about to run. Null when it shouldn't.
+    internal static Transform Admit(int player, Intents.Kind kind, string what, string path)
+    {
+        var ui = DialogueUILogic.Instance;
+        if (kind != Intents.Kind.Interact && kind != Intents.Kind.Enter && (ui != null && ui.IsTalking && !ui.currentDialogueIsPassive || DialogueOptionsPanel.IsShowing))
+        {
+            Plugin.Logger.LogInfo($"Dialogue: {NameTags.NameOf(player)} asked for {what} at {path} mid-conversation; ignored");
+            return null;
+        }
+        var t = ScenePath.Resolve(path);
+        if (t == null) { Plugin.Logger.LogWarning($"Dialogue: {NameTags.NameOf(player)} asked for {what} at {path}, not found here"); return null; }
+        // A detector that is on here sees the guest already (DetectorSync); only one the guest's own copy switched on
+        // (picking up the ritual egg switches on the oven's) needs the guest's word for it.
+        if (kind == Intents.Kind.Enter && t.gameObject.activeInHierarchy) return null;
+        // Off here: the guest's own state switched it on (the wheel in their arms shows the "found it" talk, which
+        // the host's copy only shows while the host carries it), so it's switched on here too. A once-only scene
+        // that has already run stays off.
+        if (!t.gameObject.activeInHierarchy)
+        {
+            var once = t.GetComponentInParent<StandaloneDialogue>(true);
+            if (once != null && once.onlyActivateOnce && once.hasBeenActivated)
+            {
+                Plugin.Logger.LogInfo($"Dialogue: {NameTags.NameOf(player)} asked for {what} at {path}, which already ran here; ignored");
+                return null;
+            }
+            Plugin.Logger.LogInfo($"Dialogue: {NameTags.NameOf(player)} asked for {what} at {path}, off here; switched on for them: {SwitchOn(t)}");
+        }
+        _requestedBy = player;
+        _requestedAt = Time.unscaledTime;
+        _talkAt = t.position;
+        Plugin.Logger.LogInfo($"Dialogue: {NameTags.NameOf(player)} starts {what} at {path}");
+        return t;
     }
 
     // Switches on a path's inactive objects, top down; returns their names.
@@ -539,23 +534,6 @@ public static class DialogueSync
         return string.Join(", ", off.Select(x => x.name));
     }
 
-    private static void Run(Act act, Transform t)
-    {
-        switch (act)
-        {
-            case Act.Say: t.GetComponent<NPC_DialogueManager>()?.SaySomething(); break;
-            case Act.Options: t.GetComponent<NPC_DialogueManager>()?.PresentsDialogueOptions(); break;
-            case Act.Standalone: t.GetComponent<StandaloneDialogue>()?.StartDialogue(); break;
-            case Act.Tutorial: t.GetComponent<TutorialNPCLogic>()?.TriggerInteraction(); break;
-            case Act.PoiDialogue: t.GetComponent<POI_Dialogue>()?.TriggerInteraction(); break;
-            case Act.PoiDialogueOnce: t.GetComponent<POI_Dialogue>()?.TriggerInteractionThanDisableDialogue(); break;
-            case Act.TakeItem: t.GetComponent<GenericPOIFunctions>()?.TakeItemFromPlayer(); break;
-            case Act.BabaTalk: t.GetComponent<BabaYagaStartTalking>()?.StartTalking(); break;
-            case Act.Interact: StoryInteract.Run(t.GetComponent<PlayerDetection>()); break;
-            case Act.Enter: DetectorSync.EnterFor(t.GetComponent<ObjectDetector>(), _requestedBy); break;
-        }
-    }
-
     // The guest's call, minus its two callbacks (they belong to the guest's copy of whoever called it). Those callbacks
     // are often what moves the story on: the old woman's AI starts her talk at the door and opens the yard gate when it
     // ends, so a talk started here without them left the gate shut for good. An NPC's AI usually sees the guest here
@@ -565,7 +543,7 @@ public static class DialogueSync
     private const float DefaultWait = 3f;
     private static (Transform t, string key, bool b2, bool b4, bool b5, string[] extra, float due)? _pendingDefault;
 
-    private static void DeferDefault(Transform t, NetDataReader r)
+    internal static void DeferDefault(Transform t, NetDataReader r)
     {
         string key = r.GetString();
         bool b2 = r.GetBool(), b4 = r.GetBool(), b5 = r.GetBool();
@@ -603,37 +581,17 @@ public static class DialogueSync
             p.extra.Length > 0 ? new Il2CppStringArray(p.extra) : null, null);
     }
 
-    internal static void RequestDefaultTalk(DialogueFunctions c, string key, bool b2, bool b4, bool b5, Il2CppStringArray extra)
-    {
-        var session = CoopDriver.Session;
-        if (session == null || !session.IsConnected) return;
-        var w = session.BeginMessage(MsgType.Dialogue);
-        w.Put((byte)Kind.Talk);
-        w.Put((byte)Act.DefaultDialogue);
-        w.Put(ScenePath.Of(c.transform));
-        w.Put(key ?? "");
-        w.Put(b2); w.Put(b4); w.Put(b5);
-        w.Put(extra?.Length ?? 0);
-        if (extra != null) foreach (var x in extra) w.Put(x ?? "");
-        session.Send(w, DeliveryMethod.ReliableOrdered);
-        Plugin.Logger.LogInfo($"Dialogue: asked the host to start {key} at {ScenePath.Of(c.transform)}");
-    }
+    internal static void RequestDefaultTalk(DialogueFunctions c, string key, bool b2, bool b4, bool b5, Il2CppStringArray extra) =>
+        Intents.Send(Intents.Kind.DefaultTalk, c, args: w =>
+        {
+            w.Put(key ?? "");
+            w.Put(b2); w.Put(b4); w.Put(b5);
+            w.Put(extra?.Length ?? 0);
+            if (extra != null) foreach (var x in extra) w.Put(x ?? "");
+        });
 
     private static DialogueOptionsPanel Panel() =>
         DialogueOptionsPanel.instance != null ? DialogueOptionsPanel.instance : Object.FindFirstObjectByType<DialogueOptionsPanel>(FindObjectsInactive.Include);
-
-    // Guest: have the host's copy do what the guest just started here.
-    internal static void RequestTalk(Act act, Component c)
-    {
-        var session = CoopDriver.Session;
-        if (session == null || !session.IsConnected) return;
-        var w = session.BeginMessage(MsgType.Dialogue);
-        w.Put((byte)Kind.Talk);
-        w.Put((byte)act);
-        w.Put(ScenePath.Of(c.transform));
-        session.Send(w, DeliveryMethod.ReliableOrdered);
-        Plugin.Logger.LogInfo($"Dialogue: asked the host to {act} at {ScenePath.Of(c.transform)}");
-    }
 
     // Guest. _leadingTalk: this guest started the conversation on screen; _leading: and is choosing an option now.
     private static bool _leading, _leadingTalk, _watching, _following;
@@ -1051,10 +1009,10 @@ internal static class DialogueHooks
 
     // A guest's own copy of a villager, story dialogue or hand-in doesn't run: the host's copy does it for everyone.
     [HarmonyPrefix, HarmonyPatch(typeof(NPC_DialogueManager), nameof(NPC_DialogueManager.SaySomething))]
-    private static bool Say(NPC_DialogueManager __instance) => DialogueSync.Personal(__instance) || Local(DialogueSync.Act.Say, __instance);
+    private static bool Say(NPC_DialogueManager __instance) => DialogueSync.Personal(__instance) || Local(Intents.Entry.Say, __instance);
 
     [HarmonyPrefix, HarmonyPatch(typeof(NPC_DialogueManager), nameof(NPC_DialogueManager.PresentsDialogueOptions), new System.Type[0])]
-    private static bool Options(NPC_DialogueManager __instance) => DialogueSync.Personal(__instance) || Local(DialogueSync.Act.Options, __instance);
+    private static bool Options(NPC_DialogueManager __instance) => DialogueSync.Personal(__instance) || Local(Intents.Entry.Options, __instance);
 
     [HarmonyPrefix, HarmonyPatch(typeof(StandaloneDialogue), nameof(StandaloneDialogue.StartDialogue))]
     private static bool Standalone(StandaloneDialogue __instance)
@@ -1066,22 +1024,22 @@ internal static class DialogueHooks
             Plugin.Logger.LogInfo($"Dialogue: {__instance.name} is the host's arrival talk; not raised here");
             return false;
         }
-        return __instance.isPassiveDialogue || Local(DialogueSync.Act.Standalone, __instance);
+        return __instance.isPassiveDialogue || Local(Intents.Entry.Standalone, __instance);
     }
 
     [HarmonyPrefix, HarmonyPatch(typeof(TutorialNPCLogic), nameof(TutorialNPCLogic.TriggerInteraction))]
-    private static bool Tutorial(TutorialNPCLogic __instance) => Local(DialogueSync.Act.Tutorial, __instance);
+    private static bool Tutorial(TutorialNPCLogic __instance) => Local(Intents.Entry.Tutorial, __instance);
 
     [HarmonyPrefix, HarmonyPatch(typeof(POI_Dialogue), nameof(POI_Dialogue.TriggerInteraction))]
-    private static bool PoiDialogue(POI_Dialogue __instance) => Local(DialogueSync.Act.PoiDialogue, __instance);
+    private static bool PoiDialogue(POI_Dialogue __instance) => Local(Intents.Entry.PoiDialogue, __instance);
 
     [HarmonyPrefix, HarmonyPatch(typeof(POI_Dialogue), nameof(POI_Dialogue.TriggerInteractionThanDisableDialogue))]
-    private static bool PoiDialogueOnce(POI_Dialogue __instance) => Local(DialogueSync.Act.PoiDialogueOnce, __instance);
+    private static bool PoiDialogueOnce(POI_Dialogue __instance) => Local(Intents.Entry.PoiDialogueOnce, __instance);
 
     // The old woman's talks start on their own triggers, not the dialogue components above, so the mod never saw a
     // guest start one (the host wasn't brought over).
     [HarmonyPrefix, HarmonyPatch(typeof(BabaYagaStartTalking), nameof(BabaYagaStartTalking.StartTalking))]
-    private static bool BabaTalk(BabaYagaStartTalking __instance) => Local(DialogueSync.Act.BabaTalk, __instance);
+    private static bool BabaTalk(BabaYagaStartTalking __instance) => Local(Intents.Entry.BabaTalk, __instance);
 
     // The lowest common start: an NPC's own scripts (the old woman's AI coming to the door once the talisman is taken)
     // call it directly, so none of the hooks above see it. The ones above end here too, but on a guest they've already
@@ -1100,13 +1058,13 @@ internal static class DialogueHooks
         // Not enough in the shared pack: the game's own "you don't have" line, on this screen, not the host's.
         if (WorldSync.IsGuest && __instance.takeItem != null && Find.One<InventoryManager>() is { } m
             && m.GetItemAmount(__instance.takeItem) < System.Math.Max(1, __instance.amountofItems)) return true;
-        return Local(DialogueSync.Act.TakeItem, __instance);
+        return Local(Intents.Entry.TakeItem, __instance);
     }
 
-    private static bool Local(DialogueSync.Act act, Component c)
+    private static bool Local(Intents.Entry entry, Component c)
     {
         if (!WorldSync.IsGuest) return true;
-        if (!WorldObjects.ApplyingRemote) DialogueSync.RequestTalk(act, c);  // applying the host's state replays what already happened there
+        if (!WorldObjects.ApplyingRemote) Intents.Send(Intents.Kind.Call, c, entry);  // applying the host's state replays what already happened there
         return false;
     }
 }

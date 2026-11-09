@@ -1,6 +1,8 @@
 [CmdletBinding()]
 param(
     [string[]]$Instances = @('host', 'client'),
+    # Instance names (save folder CoopSaves\<name>), in order; default: the game folder's name.
+    [string[]]$Names = @(),
     [int]$Port = 27877,
     # Extra Unity/game arguments for every instance.
     [string[]]$ExtraArgs = @(),
@@ -38,7 +40,8 @@ for ($i = 0; $i -lt $Instances.Count; $i++) {
     $name = $Instances[$i]
     $dir = Join-Path $gameRoot $name
     $session = if ($i -eq 0 -and -not $JoinOnly) { @('-coophost', "$Port") } else { @('-coopconnect', "127.0.0.1:$Port") + $ClientArgs }
-    $arguments = @('-coopinstance', $name, '-logFile', (Join-Path $dir "player-$name.log"),
+    $instName = if ($i -lt $Names.Count) { $Names[$i] } else { $name }
+    $arguments = @('-coopinstance', $instName, '-logFile', (Join-Path $dir "player-$name.log"),
                    '-screen-fullscreen', '0') + $session + $ExtraArgs
     $arguments += if ($i -lt $Screens.Count) { @('-coopscreen', $Screens[$i]) } else { @('-cooptile', "$i/$($Instances.Count)") }
     $p = Start-Process -FilePath (Join-Path $dir 'Reka.exe') -WorkingDirectory $dir -ArgumentList $arguments -PassThru

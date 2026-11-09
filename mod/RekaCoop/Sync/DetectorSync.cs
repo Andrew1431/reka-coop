@@ -85,7 +85,7 @@ internal static class DetectorSync
         if (Logged.Add(d.GetInstanceID()))
             Plugin.Logger.LogInfo($"Detectors: {(enter ? "entered" : "left")} {ScenePath.Of(d.transform)}; the host runs it");
         // The host's copy of it may be off: something only this copy did switched it on.
-        if (enter && !WorldObjects.ApplyingRemote) DialogueSync.RequestTalk(DialogueSync.Act.Enter, d);
+        if (enter && !WorldObjects.ApplyingRemote) Intents.Send(Intents.Kind.Enter, d);
         return false;
     }
 

@@ -48,6 +48,7 @@ public class CoopDriver : MonoBehaviour
             Sync.BuildSync.Attach(Session);
             Sync.BlueprintSync.Attach(Session);
             Sync.DialogueSync.Attach(Session);
+            Sync.Intents.Attach(Session);
             Sync.StorySync.Attach(Session);
             Sync.ContainerSync.Attach(Session);
             Sync.TrialSync.Attach(Session);
