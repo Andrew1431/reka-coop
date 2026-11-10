@@ -462,7 +462,7 @@ internal static class Commands
                 var ev = d.OnEnter;
                 var calls = new System.Collections.Generic.List<string>();
                 for (int i = 0; ev != null && i < ev.GetPersistentEventCount(); i++) calls.Add($"{ev.GetPersistentTarget(i)?.GetIl2CppType().Name}({ev.GetPersistentTarget(i)?.name}).{ev.GetPersistentMethodName(i)}");
-                sb.Append($"\n{dist:0}m {TPath(d.transform)} on={d.isActiveAndEnabled} tag={d.tagString} type={d.detectionType} path={d._path} tracks={d.TracksThePlayer()} once={d.triggerOnlyOnce} entered={d.HasTriggeredEnter} inside={d._inside} enter: {string.Join(", ", calls)}");
+                sb.Append($"\n{dist:0}m {TPath(d.transform)} on={d.isActiveAndEnabled} tag={d.tagString} type={d.detectionType} path={d._path} tracks={d.TracksThePlayer()} once={d.triggerOnlyOnce} entered={d.HasTriggeredEnter} inside={d._inside} los={d.doLOSCheck} moves={d.detectorMoves} cooldown={d.eventCooldown} registered={d._registeredWith != null} puppetIn={Sync.DetectorSync.PuppetInside(d)} enter: {string.Join(", ", calls)}");
             }
             return sb.ToString();
         }
@@ -528,6 +528,7 @@ internal static class Commands
             return HutProbe(hut);
         }
         if (a[0] == "hutallow") { Sync.GuestHutMirror.DevAllow.Clear(); for (int i = 1; i < a.Length; i++) Sync.GuestHutMirror.DevAllow.Add(a[i]); return "allowed " + string.Join(",", Sync.GuestHutMirror.DevAllow); }
+        if (a[0] == "actor") { if (a.Length > 1) { Sync.ActingPlayer.Trace = a[1] == "off" ? null : a[1]; return "tracing " + a[1]; } return Sync.ActingPlayer.Probe(); }
         if (a[0] == "dlgprobe")
         {
             var ui = DialogueUILogic.Instance;

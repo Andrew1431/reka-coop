@@ -15,6 +15,7 @@ namespace RekaCoop.Sync;
 [HarmonyPatch]
 internal static class DetectorSync
 {
+    private static bool _acting;                          // host: the game's player references point at that guest
     private static int _tickFor = -1;                     // host: the guest a detector is being ticked for
     private static readonly HashSet<int> Logged = new();  // guest: detectors already logged as skipped
     private static readonly Dictionary<int, float> EnabledAt = new();  // host: when each detector last came on
@@ -47,6 +48,7 @@ internal static class DetectorSync
             if (!__instance.ContainsPoint(at)) continue;
             playerPos = at;
             _tickFor = id;
+            _acting = ActingPlayer.Enter(id);
             return;
         }
     }
@@ -55,7 +57,12 @@ internal static class DetectorSync
     private static void Enabled(ObjectDetector __instance) => EnabledAt[__instance.GetInstanceID()] = Time.unscaledTime;
 
     [HarmonyPostfix, HarmonyPatch(typeof(ObjectDetector), nameof(ObjectDetector.ProximityTick))]
-    private static void Ticked() => _tickFor = -1;
+    private static void Ticked()
+    {
+        _tickFor = -1;
+        if (_acting) ActingPlayer.Exit();
+        _acting = false;
+    }
 
     [HarmonyPrefix, HarmonyPatch(typeof(ObjectDetector), nameof(ObjectDetector.OnEntered))]
     private static bool Entered(ObjectDetector __instance) => Run(__instance, true);
@@ -87,6 +94,13 @@ internal static class DetectorSync
         // The host's copy of it may be off: something only this copy did switched it on.
         if (enter && !WorldObjects.ApplyingRemote) Intents.Send(Intents.Kind.Enter, d);
         return false;
+    }
+
+    // dev
+    internal static string PuppetInside(ObjectDetector d)
+    {
+        var head = (GeneralAIController.PlayerHeadTransform?.position ?? Vector3.zero) - (PlayerSync.LocalFeet ?? Vector3.zero);
+        return string.Join(",", System.Linq.Enumerable.Select(PlayerSync.PuppetPositions(), p => { try { return $"{p.Item1}:{d.ContainsPoint(p.Item2 + head)}/{d.ContainsPoint(p.Item2)}"; } catch { return "?"; } }));
     }
 
     // Host: a guest walked into a detector that was off here (now switched on for them).

@@ -111,6 +111,8 @@ public class CoopDriver : MonoBehaviour
                 Sync.MirrorSync.Tick(Session);
                 Sync.HutSync.Tick(Session);
                 Sync.DialogueSync.Tick(Session);
+                Sync.ActingPlayer.Tick(Session);
+                Sync.AreaSync.Tick(Session);
                 Sync.BirdSync.Tick(Session);
             }
             Diagnostics.Reporter.Tick(Session);

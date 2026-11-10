@@ -313,6 +313,27 @@ public static class PlayerSync
         foreach (var p in Puppets.Values) if (p.Root != null && InWorldNow(p.PlayerId)) yield return (p.PlayerId, p.Root.transform.position);
     }
 
+    public static bool AnyPuppetInWorld
+    {
+        get { foreach (var p in Puppets.Values) if (p.Root != null && InWorldNow(p.PlayerId)) return true; return false; }
+    }
+
+    public static Transform NearestPuppetInWorld(Vector3 from, out int playerId)
+    {
+        Transform best = null;
+        float bestD = float.MaxValue;
+        playerId = -1;
+        foreach (var p in Puppets.Values)
+        {
+            if (p.Root == null || !InWorldNow(p.PlayerId)) continue;
+            var t = p.Root.transform;
+            float d = (t.position - from).sqrMagnitude;
+            if (d >= bestD) continue;
+            best = t; bestD = d; playerId = p.PlayerId;
+        }
+        return best;
+    }
+
     public static Vector3? NearestPuppet(Vector3 from) => NearestPuppetTransform(from)?.position;
 
     public static Transform NearestPuppetTransform(Vector3 from)

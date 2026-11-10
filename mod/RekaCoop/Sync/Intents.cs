@@ -17,6 +17,8 @@ public static class Intents
         Enter = 2,        // walked into a player detector; the host runs it if its own copy is off; see DetectorSync
         Call = 3,         // an entry point the guest's copy reached by itself: byte Entry
         DefaultTalk = 4,  // DialogueFunctions.StartDefaultDialogue: string key, 3 x bool, int n, n x string
+        AreaEnter = 5,    // walked into a PlayerTrigger; see AreaSync
+        AreaExit = 6,     // walked out of one
     }
 
     // Kind.Call: what the guest's copy was about to run. These go once the host's copy sees guests as players and a
@@ -54,11 +56,12 @@ public static class Intents
         var kind = (Kind)r.GetByte();
         string path = r.GetString();
         var entry = kind == Kind.Call ? (Entry)r.GetByte() : Entry.None;
-        var t = DialogueSync.Admit(from.PlayerId, kind, Name(kind, entry), path);
+        var t = kind is Kind.AreaEnter or Kind.AreaExit ? ScenePath.Resolve(path) : DialogueSync.Admit(from.PlayerId, kind, Name(kind, entry), path);
         if (t == null) return;
         Actor = from.PlayerId;
+        bool acting = ActingPlayer.Enter(Actor);
         try { Run(kind, entry, t, r); }
-        finally { Actor = -1; }
+        finally { Actor = -1; if (acting) ActingPlayer.Exit(); }
     }
 
     private static void Run(Kind kind, Entry entry, Transform t, NetDataReader r)
@@ -68,6 +71,8 @@ public static class Intents
             case Kind.Interact: StoryInteract.Run(t.GetComponent<PlayerDetection>()); break;
             case Kind.Enter: DetectorSync.EnterFor(t.GetComponent<ObjectDetector>(), Actor); break;
             case Kind.DefaultTalk: DialogueSync.DeferDefault(t, r); break;
+            case Kind.AreaEnter: AreaSync.Run(t, Actor, true); break;
+            case Kind.AreaExit: AreaSync.Run(t, Actor, false); break;
             case Kind.Call:
                 switch (entry)
                 {

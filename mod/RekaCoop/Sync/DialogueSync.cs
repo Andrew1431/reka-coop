@@ -536,10 +536,8 @@ public static class DialogueSync
 
     // The guest's call, minus its two callbacks (they belong to the guest's copy of whoever called it). Those callbacks
     // are often what moves the story on: the old woman's AI starts her talk at the door and opens the yard gate when it
-    // ends, so a talk started here without them left the gate shut for good. An NPC's AI usually sees the guest here
-    // only notices the host's own player, and only right where the guest set it off, so while the guest's version
-    // waits the host stands where the guest stands; the host's AI then starts the same talk itself, callbacks and all.
-    // The guest's version only runs if nothing started by then.
+    // ends. The host's AI sees the guest as a player (ActingPlayer) and starts the same talk itself, callbacks and all;
+    // the guest's version only runs if nothing started by then, and says so loudly: it means an AI here didn't see them.
     private const float DefaultWait = 3f;
     private static (Transform t, string key, bool b2, bool b4, bool b5, string[] extra, float due)? _pendingDefault;
 
@@ -551,16 +549,6 @@ public static class DialogueSync
         for (int i = 0; i < extra.Length; i++) extra[i] = r.GetString();
         _pendingDefault = (t, key, b2, b4, b5, extra, Time.unscaledTime + DefaultWait);
         _requestedAt = Time.unscaledTime + DefaultWait;  // the talk the host's AI starts is still the guest's to lead
-        StandWithRequester();
-    }
-
-    private static float _nextStand;
-
-    private static void StandWithRequester()
-    {
-        _nextStand = Time.unscaledTime + 0.5f;
-        var them = _requestedBy != Me ? PlayerSync.PuppetRoot(_requestedBy) : null;
-        if (them != null) MoveHere(them.position + them.right * 0.4f, them.eulerAngles.y);
     }
 
     private static void RunPendingDefault(DialogueUILogic ui)
@@ -572,10 +560,10 @@ public static class DialogueSync
             Plugin.Logger.LogInfo($"Dialogue: {p.key} started here by itself; the guest's copy of it isn't needed");
             return;
         }
-        if (Time.unscaledTime < p.due) { if (Time.unscaledTime >= _nextStand) StandWithRequester(); return; }
+        if (Time.unscaledTime < p.due) return;
         _pendingDefault = null;
         if (p.t == null) return;
-        Plugin.Logger.LogInfo($"Dialogue: nothing here started {p.key}; starting the guest's copy (without its callbacks)");
+        Plugin.Logger.LogWarning($"Dialogue: nothing here started {p.key}; starting the guest's copy (without its callbacks). {ActingPlayer.Describe()}");
         _requestedAt = Time.unscaledTime;  // still theirs to lead
         p.t.GetComponent<DialogueFunctions>()?.StartDefaultDialogue(p.key, null, p.b2, new Il2CppSystem.Nullable<DialogueBranch>(), p.b4, p.b5,
             p.extra.Length > 0 ? new Il2CppStringArray(p.extra) : null, null);
@@ -1047,7 +1035,14 @@ internal static class DialogueHooks
     [HarmonyPrefix, HarmonyPatch(typeof(DialogueFunctions), nameof(DialogueFunctions.StartDefaultDialogue), typeof(string), typeof(Il2CppSystem.Action), typeof(bool), typeof(Il2CppSystem.Nullable<DialogueBranch>), typeof(bool), typeof(bool), typeof(Il2CppStringArray), typeof(Il2CppSystem.Action))]
     private static bool DefaultDialogue(DialogueFunctions __instance, string __0, bool __2, bool __4, bool __5, Il2CppStringArray __6)
     {
-        if (!WorldSync.IsGuest || DialogueSync.Personal(__instance)) return true;
+        if (!WorldSync.IsGuest)
+        {
+            // An NPC's AI started it for the player it sees (ActingPlayer): theirs to lead.
+            if (ActingPlayer.InAi && Intents.Actor < 0 && CoopDriver.Session is { Role: Role.Host, IsConnected: true })
+                DialogueSync.NoteRequest(ActingPlayer.Current >= 0 ? ActingPlayer.Current : DialogueSync.Me, 0f);
+            return true;
+        }
+        if (DialogueSync.Personal(__instance)) return true;
         if (!WorldObjects.ApplyingRemote) DialogueSync.RequestDefaultTalk(__instance, __0, __2, __4, __5, __6);
         return false;
     }
