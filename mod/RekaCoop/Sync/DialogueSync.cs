@@ -690,6 +690,15 @@ public static class DialogueSync
             CoopDriver.Notice($"{NameTags.NameOf(_optionsLeader)} is choosing what to say.");
             return false;
         }
+        // Guest starter: the game's own pick would close the box here, and the host's answer would open a new one a
+        // moment later (the camera lets go if that moment is longer than its 0.1 s). The pick goes to the host from
+        // here instead and only the panel closes: the box stays on its line and the answer goes on from it.
+        if (session?.Role == Role.Client && _leading && _one != null && session.IsConnected)
+        {
+            SendPick(session, index);
+            if (DialogueOptionsPanel.IsShowing) Panel()?.Close();
+            return false;
+        }
         if (session?.Role != Role.Host || !session.IsConnected) return true;
         if (_talking && _leader >= 0 && _leader != Me && !_remotePick)
         {
@@ -1095,15 +1104,7 @@ public static class DialogueSync
         {
             int index = i;
             ls.Add(labels[i].label);
-            callbacks.Add((System.Action)(() =>
-            {
-                _leading = false;
-                _pickedAt = Time.unscaledTime;
-                var w = session.BeginMessage(MsgType.Dialogue);
-                w.Put((byte)Kind.Pick);
-                w.Put(index);
-                session.Send(w, DeliveryMethod.ReliableOrdered);
-            }));
+            callbacks.Add((System.Action)(() => SendPick(session, index)));
             heard.Add(labels[i].heard);
         }
         _leading = choosing;
@@ -1116,16 +1117,23 @@ public static class DialogueSync
 
     private static float _leadingSince;
 
-    // Guest: the options panel closed without a pick (left with the back button): the host ends the talk too.
-    private static void WatchLeaving(CoopSession session)
+    // Guest starter: the choice goes to the host (-1: left without one).
+    private static void SendPick(CoopSession session, int index)
     {
-        if (!_leading || DialogueOptionsPanel.IsShowing || Time.unscaledTime - _leadingSince < 0.5f) return;
+        if (!_leading) return;
         _leading = false;
         _pickedAt = Time.unscaledTime;
         var w = session.BeginMessage(MsgType.Dialogue);
         w.Put((byte)Kind.Pick);
-        w.Put(-1);
+        w.Put(index);
         session.Send(w, DeliveryMethod.ReliableOrdered);
+    }
+
+    // Guest: the options panel closed without a pick (left with the back button): the host ends the talk too.
+    private static void WatchLeaving(CoopSession session)
+    {
+        if (!_leading || DialogueOptionsPanel.IsShowing || Time.unscaledTime - _leadingSince < 0.5f) return;
+        SendPick(session, -1);
         Plugin.Logger.LogInfo("Dialogue: left the options");
     }
 

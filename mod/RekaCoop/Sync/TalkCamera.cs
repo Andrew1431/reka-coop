@@ -12,6 +12,9 @@ internal static class TalkCamera
 {
     private const float SendEvery = 1f / 30f, Stale = 0.6f;
 
+    // Dev: off, a talk is framed by each copy's own dialogue camera (nothing sent, nothing shown); the hut drive is unaffected.
+    internal static bool StreamTalks = true;
+
     private static float _nextSend;
     private static int _seqOut, _seqIn = -1;
     private static Vector3 _pos;
@@ -24,7 +27,7 @@ internal static class TalkCamera
 
     public static void Tick(CoopSession session)
     {
-        if (!(DialogueSync.LeadingTalk || HutSync.HostDriving) || !session.IsConnected || Time.unscaledTime < _nextSend) return;
+        if (!(StreamTalks && DialogueSync.LeadingTalk || HutSync.HostDriving) || !session.IsConnected || Time.unscaledTime < _nextSend) return;
         _nextSend = Time.unscaledTime + SendEvery;
         var cam = Camera.main;
         if (cam == null) return;
@@ -92,7 +95,7 @@ internal static class TalkCamera
         Apply();
     }
 
-    private static bool Watching => DialogueSync.WatchingTalk || HutSync.WatchingDrive;
+    private static bool Watching => StreamTalks && DialogueSync.WatchingTalk || HutSync.WatchingDrive;
 
     private static Vector3 _shownPos;
     private static Quaternion _shownRot = Quaternion.identity;
