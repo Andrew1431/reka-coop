@@ -66,6 +66,7 @@ internal static class Commands
         }
         Trace.Tick();
         NoInput.Tick();
+        DialogueProbe.Tick();
         if (_walkTo is Vector3 goal)
         {
             // walkto: real movement input toward the goal, relative to the camera (the override is (forward, right))
@@ -136,6 +137,7 @@ internal static class Commands
 
     private static string Run(string[] a)
     {
+        if (DialogueProbe.Run(a) is { } probed) return probed;
         if (a[0] == "rig") return RigDump.Run();
         if (a[0] == "skiptut") return SkipTutorial();
         if (a[0] == "status") return Status();

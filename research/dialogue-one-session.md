@@ -144,3 +144,224 @@ Estimate: ~150 lines out, ~220 in; TalkCamera −10, ActingPlayer +25.
 ## Biggest risk
 
 Probe 1: if villager talks are one line per generation and the game's own camera only stays in one session through a continuation rule we cannot read, then "one session" is really "the same chain of generations as the host, started within the same grace window", and followers must reproduce the game's chaining timing exactly (stage 5); a late message would make the follower's camera restart anyway.
+
+## 7. Probe results (2026-11-10)
+
+Measured in the running game, host `play` + guest `client` on one PC, fixtures `talisman-1.0.32` (twice) and
+`pre-door-1.0.32`, game 1.0.32. Tooling: `Dev/DialogueProbe.cs` (dev build only, every patch applied by command, none at
+load) and two lines in `Dev/Commands.cs`. No sync behaviour was changed. Commands: `dlgtrace`, `dlgstate`,
+`dlghold on|off|rearm`, `dlgadvance held|queue|stop|stopfin|branch|end|force|skip [cam2]`, `dlgstart`, `dlgchain`,
+`dlghead`, `dlgpress`, `dlgdup`, `dlgclosepatch`, `camrules`, `campatch [2]`, `camsuspend`. Log prefixes: `[dlgtrace]`
+(box + camera on every change), `[dlgwait]` (which action a line waits to run), `[dlgcam]` (the camera's own decisions),
+`[dlghold]`, `[dlgclose]`.
+
+### Probe 1: what a talk is in generations
+
+Ran (host log): the four tutorial talks with the old woman, a StandaloneDialogue, and a tutorial villager with options.
+
+| Talk | Started by | Generations | Lines | Branch | Camera |
+|---|---|---|---|---|---|
+| Door (piece 001) | her AI, for the guest | 1 (gen 1) | 5 | no | Activate once, BeginSession once |
+| Yard (piece 002) | interact | 1 (gen 3) | 13 | no | once |
+| "I'm in the house" (piece 004) | yard trigger | 1 | 1 | no | none at all (no Activate, `Ignore`) |
+| Indoors (piece 005) | interact | 1 (gen 3) | 21 | no | once |
+| StandaloneDialogue `DontGoThereWithHouse_01` | dev `standalone` | 1 (gen 5) | 2 | no | none |
+| Villager Urszula: greeting | `say` (SaySomething) | 1 (gen 7) | 1 | yes | Activate, BeginSession |
+| ... options, pick 0: answer | options callback | 1 (gen 9) | 1 | yes | Activate again, Commit, **no** BeginSession |
+| ... Goodbye | options | 1 (gen 15 after 13) | 1 | no | Activate, Commit, no BeginSession |
+
+- Generation numbers: +1 when a dialogue starts, +1 when it ends (`StopTalkAndCallOnFinished`, `ForceCloseDialogue`,
+  `StopTalkingAndCloseUI`); +1 only when the next one starts through a finished branch (see probe 5). Villager steps
+  therefore go 7, 9 / 11, 13, 15.
+- What a line waits to run (`[dlgwait]`): mid-talk `DialogueUILogic.QueueNextLine`; last line without a branch
+  `DialogueUILogic.StopTalkAndCallOnFinished` (the method itself, no closure); last line with a branch
+  `<>c__DisplayClass87_0.<OnLastLineRevealed>b__1`. `pendingAfterDialogue` is emptied when the last line is revealed
+  (it moves into that closure). `continuationGraceUntilFrame` is -1 all through a talk and becomes frame + 4 when a
+  branch has run (`CONTINUATION_GRACE_FRAMES` = 4).
+- Camera per line, read at `OnDialogueLineStarted` with the live values:
+  `LineStarted ... gen=3 -> Boundary (proposal=False live=True sgen=3)` for every line after the first. In the 21-line
+  talk the host's shots went `Player camera` (refused, see probe 4), `Opening wide OTS`, `OTS-Medium`, `OTS-Close`,
+  `OTS-Medium`, `Single-Close`, `OTS-Medium`, `OTS-Close`, `OTS-Medium`, reasons `policy change` (about every second
+  line) and `reaction over`. One `BeginSession`, one `session start`.
+- The rules, read from the pure statics (`camrules`), complete for non-passive lines:
+  - `Commit` if and only if there is a proposal with the line's speaker name whose generation differs from the line's
+    (it was made before `RequestStartDialogue` raised the generation). Live or not, any session generation.
+  - else live and session generation = line's: `Boundary`. This is the ordinary next line of the session, not a restart.
+  - else live and another generation: `Foreign`. Not live: `Ignore`. Passive lines never commit.
+  - `ShouldRelease`: talking with ui generation != session generation: true at once. Not talking, no options, no pending
+    proposal: true after `releaseGraceSeconds` = 0.1. Options showing: never. Pending proposal while idle: never.
+- A `Commit` on a live session does not restart it: no `BeginSession`, the next solve is `policy change`. Seen on the
+  host (villager answer: `OTS-Close "policy change"`), and on a guest in today's code for all 21 one-line dialogues of
+  the indoor talk (generation 3, 5, 7 ... 43; `BeginSession` once; shots `Opening Single-Loose`, `Single-Medium`,
+  `Single-Close`, `Single-Medium`, `Single-Tight` ...).
+- Not found in reach: a rumor answer of several lines (`ContinueDialogue`), a StandaloneDialogue that chains. The
+  tutorial villager's answers are one line each. So "one line per generation in rumors" is still unmeasured; what is
+  measured is that a new generation of the same speaker keeps the session.
+
+Conclusion: a story talk is one generation with all its lines; a villager talk is one generation per greeting/answer,
+joined by the options panel. The camera session survives a new generation as long as the speaker is proposed again in
+the frame the new dialogue starts and the box was not idle for 0.1 s (an open options panel does not count as idle).
+
+### Probe 2: the held action advances one session
+
+Ran on the guest: `dlghold on`, `talktest` / `dlgstart n`, `dlgadvance held` per line; again with `dlgadvance queue`.
+
+- Rank 1: `gen=45 idx 0 -> 1 -> 2`, box up (`root=True`) throughout, last call ran `StopTalkAndCallOnFinished`:
+  `talk=False gen=46`. No exception in 30+ advances. With a camera: generation constant, `Opening OTS-Close` then
+  `OTS-Close "policy change"`, one `BeginSession`.
+- Rank 2: `QueueNextLine(false)` does the same mid-talk; called on the last line of a dialogue without a branch it
+  ends the dialogue (`idx=3/3 talk=False gen+1`). `RunCompletionThenBranch(noop)` on a branch dialogue's last line does
+  what the held closure does.
+- Last line of a branch dialogue: the held closure runs the branch action, sets the grace frame and **leaves the box
+  up on the last line** (`talk=True root=True`, camera live), for as long as nothing else happens (watched 10 s, with
+  and without an options panel). It needs a following dialogue, options, or a close.
+- **Crash (guest died, AccessViolation in `il2cpp_runtime_invoke`)**: a branch built as
+  `new Il2CppSystem.Nullable<DialogueBranch>(new DialogueBranch(action))` holds a wrong action pointer; the game crashes
+  when the last-line closure runs it. Built field by field it is fine: `new Nullable<DialogueBranch>()`, then at the
+  unboxed pointer `hasValue` (byte, offset 0) = 1 and `value.action` (pointer, offset 8) = the action (offsets read from
+  the class at run time; `DialogueProbe.MakeBranch`). Also: the `pendingAfterDialogue` getter throws
+  NullReferenceException when there is no value.
+- **Wait routines that were stepped past stay alive.** `coroutinesActive` goes 1, 2, 3 ... per line advanced from
+  outside and back to 0 at the end. With stand-in actions that log, one simulated press (`dlgpress`) after two outside
+  advances ran the stand-ins of lines 2, 1 and 0 in one frame.
+- **A line nobody waits on closes itself.** After a press ran a stand-in that does nothing, `coroutinesActive` = 0 and
+  the box closed 2 to 11 frames later (`talk=False gen+1`), not through `WatchdogForceRecover` and not through
+  `StopTalkingAndCloseUI` (both logged, neither ran). With `dlghold rearm` (the stand-in starts
+  `WaitForPlayerInputThenDoSth(standIn)` again in the same call) the box stayed up through repeated presses.
+- Running a held action after its dialogue is gone leaves a broken box (`talk=False root=False reveal=True`, index
+  moved). The held action must be checked against (local generation, index) before every use.
+- A press while the line is typing only finishes the typing; the wait starts in that frame and does not take the same
+  press.
+
+Conclusion: yes, "advance a follower by running the held action" works, and the held action (the `action` argument of
+`WaitForPlayerInputThenDoSth`) is the right one because it is also the correct last-line step. `QueueNextLine(false)`
+is a safe fallback mid-talk only.
+
+### Probe 3: follower camera start, speaker change, options
+
+Ran on the guest: `dlgstart 4 cam alt` (camera given her head, then `RequestStartDialogue`, one frame; lines named
+alternately "Old Woman" / "Other"), `dlgadvance held cam2` (a second `Activate` for another head just before an
+advance), `dlgchain 2 cam other`, `talkoptions` on a held branch line.
+
+- `Activate` + `RequestStartDialogue` in one frame: `live=True sgen=50 shot="Opening OTS-Close" reason="session start"`
+  in that same frame.
+- A line with another speaker name inside the generation: nothing changes (same shot, `spk="Old Woman"`).
+- A proposal made inside the generation (`pgen=50`, line gen 50): `Boundary`; the session keeps its head, the proposal
+  stays pending (`prop=True`) until the dialogue ends. It never commits.
+- A new generation with another head and name: `Commit`, no `BeginSession`,
+  `shot="Group" reason="group establish (speaker change, 3 participants)"`, `spk="Other"`.
+- A new generation with no proposal: `Release "foreign dialogue on screen"` in that frame; no camera for that dialogue.
+- Options: the panel open on a held last line kept `live=True` (6 s); `ShouldRelease` is false for every row with
+  options showing. In the real villager talk on a guest leader the session also stayed live across panel and answer.
+- End: `Release "dialogue UI idle"` 5 to 7 frames after the box closes. A new start 0.5 s after an end is a new session
+  (`BeginSession`, `Opening OTS-Medium "session start"`).
+
+### Probe 4: the host's camera in a guest-led talk
+
+Ran: guest-led door talk (her AI starts it), yard talk and indoor talk (interact intent), villager talk (`say` on the
+guest), with `campatch` on the host. Then the villager talk again with `camsuspend on`.
+
+At the session-start solve, inside the swap (`acting=1 inAi=True`), in all four:
+`playerHead=nose@(puppet) rekaHead=nose@(puppet) playerRoot=RekaCoop_Puppet_1 pm=null rekaRoot=(puppet position)`.
+Everything the camera reads follows the swap together; only `FindPlayerMovement()` is null. The solve validated every
+time, framing the guest's puppet as Reka:
+
+| Talk | First solve on the host | Next |
+|---|---|---|
+| Door, speaker 10.8 m | `Opening wide OTS`, true | line 2: `"Reka moved"` (host gathered) `Held Single-Medium`, true |
+| Yard, 2.8 m | `Opening OTS-Medium`, true | `"Reka moved"` `Held OTS-Medium`, then `Single-Medium`, `OTS-Medium` ... |
+| Indoors, 4.2 m | `Opening OTS-Close`, true | `"Reka moved"` `Held Single-Medium`; three `policy change` false (shot kept); `Single-Tight` |
+| Villager, 1.7 m, host 30 m off | `Opening OTS-Loose`, true | `Single-Medium "policy change"` |
+
+"nothing validated" was seen only twice: (1) **host-led** indoor talk, first frame: `RefuseUnvalidated "session start"`,
+`Player camera`, then the game's own `"retry from the player camera"` 51 frames later gave `Opening wide OTS`;
+(2) when I put the host on the hut roof mid-talk: refused at `"Reka moved"`, at every `"retry"` (about every 60 frames)
+and at every line, shot name unchanged. `SpeakerOutOfRange` was false everywhere, including 29.7 m.
+
+With `camsuspend on`: the prefixes do restore the host's references (`playerHead=nose@(165.1,6.4,-60.1)
+pm=Reka_Body_Base_01`), and the first solve then runs from where the host stands before Gather: `Opening wide OTS`
+from 29.7 m, then a cut once the host has been moved.
+
+Conclusion: the cause given in section 1 is wrong. The swap is consistent and the host validates. Refusal depends on
+where the host's Reka stands relative to the speaker (line of sight), so the place to look for the reported symptom is
+the Gather spot (1.6 m to the side, grounded by raycast: indoors that can be behind a wall). I could not reproduce a
+whole talk refused. Suspend makes the first shot worse, not better.
+
+### Probe 5: continuation without a blink (guest, `dlgchain`)
+
+- No branch, held `StopTalkAndCallOnFinished` then `RequestStartDialogue` in the same frame: generation +2, camera
+  session kept (`Commit`, no `BeginSession`), but `root=False` for about 11 frames (0.18 s). Writing
+  `continuationGraceUntilFrame` first changes nothing.
+- Branch dialogue, held closure then `RequestStartDialogue` in the same frame: generation +1, **`root=True` throughout**,
+  camera kept, next shot `Single-Tight "policy change"`.
+- The same 8 to 14 frames of `root=False` open every dialogue, on the host too (also the game's own options answer).
+  Within one generation the root stays visible from line to line. Today's guest shows it on every line: that is the blink.
+
+### Probe 6: watchdog
+
+`WATCHDOG_TIMEOUT_SECONDS` = 2, `WATCHDOG_TIMEOUT_FRAMES` = 20, `AdvanceInputCooldown` = 0.15, `delayForPassiveDialogue`
+= 2. A held line with its wait routine alive stayed 30 s (`wdAgo=0.0s` every read); host lines held for a guest stay for
+minutes. No write to `watchdogLastProgress*` is needed while a wait routine runs. What closes a line with no wait
+routine (probe 2) was not identified.
+
+### Probe 7: queue and duplicates (guest, `dlgdup`)
+
+- The lines on screen requested again: dropped (`IsDuplicateDialogue` true, `q=0`).
+- Another dialogue while talking: queued (`q=1`); the same one requested again: dropped (the check covers the queue). It
+  started by itself when the current one ended.
+- An active request while a passive line is up: queued, `QueuedBehindPassiveTotal` 0 -> 1, started after the passive
+  line's time ran out. A second passive duplicate: dropped.
+
+### Not measured
+
+Probe 8 (loot). A several-line rumor answer and a chaining StandaloneDialogue (none in reach in the tutorial).
+`WaitDelayThenDoSth` held for subtitle mode. Real network delay (both copies are on one PC: a guest leader's next line
+arrived within one frame, so its session never idled 0.1 s; over the internet it will). Joining mid-talk. The method
+that closes an unwaited line. The reported "host validates nothing for a whole guest-led talk".
+
+### Section 2 against the measurements
+
+Confirmed:
+- `Start` (all lines of a host generation) + `Index` fits every talk seen. talkId = host generation works; expect gaps.
+- The held action as the advance (rank 1), `Activate` then `RequestStartDialogue` in one frame, no callbacks on
+  followers, an open panel holding the camera, the duplicate guard for passive copies.
+- Continuation without a blink exists, through the branch path only.
+
+Wrong:
+- "A new generation is a Boundary, so the camera opens again on every mod line." `Boundary` is the normal next line.
+  A new generation with the speaker proposed again is a `Commit`, and that keeps a live session. The session restarts
+  only after 0.1 s idle or a dialogue with no proposal. A watching guest today keeps one session for the whole talk; a
+  guest leader loses it when the host's next line takes longer than 0.1 s to arrive after its own line closed. The
+  `shot=Opening wide OTS reason=session start` read on every line is also what a session shows when later
+  `policy change` solves return false. The blink is real and separate: the box hides for about 0.2 s at every start.
+- "Mid-generation speaker change: apply the queued Camera proposal for index k." It never commits. The game changes
+  speaker with a new generation. Drop the per-index `Camera` message; the speaker belongs in `Start`.
+- The host "nothing validated" explanation, and with it the Suspend prefixes (both ranks of that fix).
+- "Set `continuationGraceUntilFrame` if needed": no effect.
+- "Write `watchdogLastProgress*` while holding": not needed.
+- `afterDialogue: hasBranch ? DialogueBranch(NoOp) : null` as written crashes; build the Nullable by hand (probe 2).
+
+Change:
+1. Followers always start with a no-op branch and isStayInUI, whatever the host's dialogue has. At the last line the
+   follower does not run the held action when the host's index moves on; it waits for what the host does next:
+   `Start` -> run the held closure and `Activate` + `RequestStartDialogue` in the same frame (no blink, session kept);
+   `Options` -> run it, then `panel.Show`; `End` -> `ForceCloseDialogue`. A follower whose talk has ended on the host
+   therefore shows its last line until `End` arrives (0.5 s quiet rule today; shorten it for the no-options case).
+2. Every `Start`, also a continuing one, carries the speaker (head path, name) or says there is none. With a speaker
+   the follower calls `Activate` first, every time; without one it must not (the yard line and the standalone
+   dialogue have no camera on the host either).
+3. Guest leader: the stand-in action (`SendNext`) must start a new `WaitForPlayerInputThenDoSth(standIn)` in the same
+   call, or the box closes itself within a few frames while the host's `Index` is still on its way. Stand-ins of earlier
+   lines fire once more on the next press: each must compare its (talkId, index) with the current line and do nothing
+   otherwise; the host's check on `Next` stays.
+4. Check the held action's (local generation, index) before every invoke and drop it when the local generation changes.
+5. Host camera: no Suspend. Keep "Gather before the first line" as a small improvement (it removes the `Reka moved`
+   re-cut at line 2), and give Gather a spot that sees the speaker; log `RefuseUnvalidated` in dev builds to catch the
+   reported case.
+6. Stage 6 shrinks to: `TalkCamera` off for talks, speaker in `Start`. "Biggest risk" is settled in our favour: keeping
+   the session needs the proposal in the starting frame and no 0.1 s idle, nothing about chaining timing.
+
+Seen on the way (not dialogue design): in the host-led run the guest crossed a Lutki `ObjectDetector_Player` a moment
+before the host walked into the yard; the yard talk was given to the guest (`conversation led by regress-guest`) and the
+host was moved 100 m to the Lutki (`moved beside the starter (0.3, 5.6, 109.4)`). After dev `closeoptions` on the host
+the villager's box stays up (`talk=True`) with nobody to close it.
