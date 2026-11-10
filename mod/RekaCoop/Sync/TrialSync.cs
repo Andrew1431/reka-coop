@@ -12,12 +12,13 @@ namespace RekaCoop.Sync;
 // Trials (the quest chapters) run on the host. Its tracker's progress (the current trial, which trials and tasks are
 // done, finished quest steps, the tutorial counters, claimed rewards) is flattened into named numbers and mirrored to
 // guests the way story flags are: diffs once a second, everything on a guest's Ready. Guests don't move to the next
-// trial on their own; the host's index does it. What a guest achieves goes the other way: a task its own game ticked,
-// a tutorial counter it raised, and its pickups and help counted in its stats (tasks like "collect 10 mushrooms" read
-// the player's own stats, not the shared pack) are sent to the host, which adds them to its own and evaluates.
+// trial on their own, and a guest's tasks don't check themselves: they are done when the host's are. A story event the
+// tracker hears on a guest's copy (the chicken placed, a site cleansed, a quest step finished) is an intent: the host's
+// tracker handles it. A guest's pickups and help counted in its stats (tasks like "collect 10 mushrooms" read the
+// player's own stats, not the shared pack) are sent to the host, which adds them to its own and evaluates.
 public static class TrialSync
 {
-    private enum Kind : byte { Ready = 1, State = 2, Gain = 3, Stats = 4, HostStats = 5 }
+    private enum Kind : byte { Ready = 1, State = 2, Stats = 4, HostStats = 5 }
 
     private static Dictionary<string, int> _sent;   // host: as last sent
     private static float _nextPoll;
@@ -91,7 +92,6 @@ public static class TrialSync
             }
             if (_base == null || Time.unscaledTime < _nextGain) return;
             _nextGain = Time.unscaledTime + 1f;
-            SendGains(session, t);
             SendStats(session);
             return;
         }
@@ -141,18 +141,6 @@ public static class TrialSync
             finally { Applying = false; }
             _base = Capture(t);
         }
-        else if (kind == Kind.Gain && session.Role == Role.Host)
-        {
-            int n = r.GetInt();
-            var t = Tracker;
-            var gains = new Dictionary<string, int>();
-            for (int i = 0; i < n; i++) gains[r.GetString()] = r.GetInt();
-            if (t == null) return;
-            var ours = Capture(t);
-            var take = new Dictionary<string, int>();
-            foreach (var kv in gains) if (IsGain(kv.Key) && kv.Value > ours.GetValueOrDefault(kv.Key)) take[kv.Key] = kv.Value;
-            Plugin.Logger.LogInfo($"Trials: player {from.PlayerId}'s progress: {n} values, {(take.Count > 0 ? Apply(t, take) : 0)} taken on");
-        }
         else if (kind == Kind.HostStats && session.Role == Role.Client)
         {
             int n = r.GetInt();
@@ -177,23 +165,30 @@ public static class TrialSync
         }
     }
 
-    // Progress that only ever goes up: a task done, a quest step, a tutorial counter.
-    private static bool IsGain(string key) =>
-        key.StartsWith("step.") || key.StartsWith("tut.") ||
-        (key.StartsWith("T") && key.IndexOf('.') is int dot && dot > 1 && int.TryParse(key[(dot + 1)..], out _));
-
-    private static void SendGains(CoopSession session, TasksTracker t)
+    // The tracker's handlers for story events (it subscribes them to GameEvents.Tutorial). On a guest they don't run;
+    // the host's runs for that guest. FinishedStep is OnFinishedQuestStep, which takes the step.
+    internal static readonly string[] Handlers =
     {
-        var now = Capture(t);
-        var gains = now.Where(kv => IsGain(kv.Key) && kv.Value > _base.GetValueOrDefault(kv.Key)).ToList();
-        if (gains.Count == 0) return;
-        foreach (var kv in gains) _base[kv.Key] = kv.Value;
-        var w = session.BeginMessage(MsgType.Trial);
-        w.Put((byte)Kind.Gain);
-        w.Put(gains.Count);
-        foreach (var kv in gains) { w.Put(kv.Key); w.Put(kv.Value); }
-        session.Send(w, DeliveryMethod.ReliableOrdered);
-        Plugin.Logger.LogInfo($"Trials: sent our progress to the host: {string.Join(", ", gains.Select(kv => $"{kv.Key}={kv.Value}"))}");
+        "OnPineBranchRevealed", "OnGotChicken", "OnPlacedChicken", "OnCleansedSingleSite", "OnCleansedAllSites", "OnBroughtEgg",
+        "OnPlacedEgg", "OnPlacedSingleOffering", "OnPlacedAllOfferings", "OnReceivedTalisman", "OnDissolvedSingleBone",
+        "OnDissolvedAllBones", "OnBroughtEmbers", "OnGaveEmbersToBaba", "OnRitualFinished", "OnBuildingTutorialFinished",
+    };
+    internal const byte FinishedStep = 255;
+
+    // Host: a guest's copy heard this event.
+    internal static void EventFor(int player, byte handler, int step)
+    {
+        var t = Tracker;
+        if (t == null || (handler != FinishedStep && handler >= Handlers.Length)) return;
+        string name = handler == FinishedStep ? $"OnFinishedQuestStep({(QuestStepID)step})" : Handlers[handler];
+        DialogueSync.NoteRequest(player, 10f);
+        try
+        {
+            if (handler == FinishedStep) t.OnFinishedQuestStep((QuestStepID)step);
+            else typeof(TasksTracker).GetMethod(Handlers[handler], BindingFlags.Public | BindingFlags.Instance).Invoke(t, null);
+            Plugin.Logger.LogInfo($"Trials: {name} for player {player}: {Describe()}");
+        }
+        catch (System.Exception e) { Plugin.Logger.LogWarning($"Trials: {name} for player {player} failed: {(e.InnerException ?? e).Message}"); }
     }
 
     // The stats that tasks count: pickups and crafts per item, places visited and solved, people helped.
@@ -365,11 +360,8 @@ public static class TrialSync
     {
         var t = Tracker;
         if (t == null) return 0;
-        // Only where the host is ahead (or the trial itself); a guest's own progress the host hasn't taken on yet stays.
-        var ours = Capture(t);
         var state = new Dictionary<string, int>();
-        foreach (var (k, v) in host)
-            if (int.TryParse(v, out var n) && (k == "idx" || !IsGain(k) || n > ours.GetValueOrDefault(k))) state[k] = n;
+        foreach (var (k, v) in host) if (int.TryParse(v, out var n)) state[k] = n;
         Applying = true;
         try { return Apply(t, state); }
         finally { Applying = false; }
@@ -409,10 +401,40 @@ internal static class TrialHooks
     [HarmonyPrefix, HarmonyPatch(typeof(TasksTracker), nameof(TasksTracker.SkipCurrentTrial))]
     private static bool Skip() => Allowed("skip a trial");
 
+    // A guest's tasks are done when the host's are; they don't check themselves (or run what follows from being solved).
+    [HarmonyPrefix, HarmonyPatch(typeof(ProgressionTask), nameof(ProgressionTask.Evaluate))]
+    private static bool Check(ProgressionTask __instance, ref bool __result)
+    {
+        if (!WorldSync.IsGuest || WorldTransfer.LoadingHostWorld) return true;
+        __result = __instance._isComplete;
+        return false;
+    }
+
+    [HarmonyPrefix, HarmonyPatch(typeof(TasksTracker), nameof(TasksTracker.OnFinishedQuestStep))]
+    private static bool Step(TasksTracker __instance, QuestStepID step) => Heard(__instance, TrialSync.FinishedStep, (int)step, $"OnFinishedQuestStep({step})");
+
+    internal static bool Heard(TasksTracker t, byte handler, int step, string name)
+    {
+        if (!WorldSync.IsGuest || TrialSync.Applying || WorldTransfer.LoadingHostWorld) return true;
+        Plugin.Logger.LogInfo($"Trials: {name} here; the host's tracker handles it");
+        Intents.Send(Intents.Kind.TrackerEvent, t, args: w => { w.Put(handler); w.Put(step); });
+        return false;
+    }
+
     private static bool Allowed(string what)
     {
         if (!WorldSync.IsGuest || TrialSync.Applying || WorldTransfer.LoadingHostWorld) return true;
         Plugin.Logger.LogInfo($"Trials: guest can't {what} on its own; the host's progress decides");
         return false;
     }
+}
+
+[HarmonyPatch]
+internal static class TrackerEventHooks
+{
+    private static IEnumerable<MethodBase> TargetMethods() =>
+        TrialSync.Handlers.Select(n => (MethodBase)typeof(TasksTracker).GetMethod(n, BindingFlags.Public | BindingFlags.Instance)).Where(m => m != null);
+
+    private static bool Prefix(TasksTracker __instance, MethodBase __originalMethod) =>
+        TrialHooks.Heard(__instance, (byte)System.Array.IndexOf(TrialSync.Handlers, __originalMethod.Name), 0, __originalMethod.Name);
 }

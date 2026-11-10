@@ -39,6 +39,40 @@ Each phase ends with the scripted run in phase 0 passing, host-led and guest-led
 
 **5. Play through.** Chapter by chapter with the phase 0 script extended as we go. Fix by adding an intent kind or a saved type, never a scene name.
 
+## Remaining work as a checklist (2026-11-10)
+
+From `research/story-survey.md` (172 rows of story machinery sorted by type; read from signatures, guesses marked there).
+The game is one hand-scripted tutorial (20 beats, table in the survey; 1 to 4 done) and a procedural world built from
+generic parts (35 quest task types, about 116 place types). So the rest of phases 3 and 4 is these mechanisms, each
+proved on the tutorial beat that first needs it, not a plan per scene:
+
+- [ ] M1 story/local split of pickup and placement events (AreaSync's split, generalized). Beats 6, 11, 14.
+- [ ] M2 Interact intent for every story PlayerDetection, including ones wired at run time. Beat 15, quests.
+- [ ] M3 guest silence list (quest tasks, QuestRunner, tracker evaluation, place events, travel triggers). Tracker part
+      done in protocol 58; the rest as beats and the first generated quest need them.
+- [ ] M4 nearest-player swap around story Updates on the host. Beat 16, quests.
+- [ ] M5 a guest's carry/place/ritual player events as an intent. Beats 11, 12.
+- [ ] M6 presentation of host story events on guests (music, ritual statics). Beat 18.
+- [ ] M7 AreaSync adapters for the other physics triggers. Beats 10, 12.
+- [ ] M8 UseItem intent (pine branch, lantern reveal, watering, fire). Beats 9, 13.
+- [ ] M9 ritual advance entry. Beats 12 to 17.
+- [ ] M10 hand-in intent for item-giving screens. First chapter after the tutorial.
+- [ ] Talks as one session on every copy (seen by the user 2026-11-10, two symptoms, one cause). A copy that is not
+      running the talk shows each of the host's lines as a new one-line dialogue (DialogueSync.FollowNow: force-close,
+      start again). So the box blinks out and back on every line, and that copy's dialogue camera starts over with its
+      opening shot on every line (measured in the indoor talk: guest leader `shot=Opening wide OTS reason=session
+      start`, generation +2 per line). The host, which runs the real talk for a guest, validates no shot at all
+      (`Player camera ... nothing validated`) and shows the guest's camera. Wanted: the host sends the whole talk when
+      it starts, each copy runs it as one dialogue and only the line index is synced.
+- [ ] The test saves were made with input off, so the lantern step's on-screen prompt (CTRL) was never satisfied. Has
+      blocked nothing through beat 8; complete it properly in the fixtures before beat 9 (lantern reveal).
+- [ ] Pickups can be taken twice when two players take the same one within a second (5 wood from 4 planks). Part of M1.
+- [ ] Regression speed: one continuous playthrough per leader instead of a start per scenario, waits on conditions
+      instead of fixed sleeps, digest on demand. Then, with the user's go-ahead, runs on Olga's PC over SSH.
+
+Order: tutorial beats 5 to 20 in sequence with a regression scenario each (that covers M1, M5 to M9), then one
+generated quest of each task family on the first map (M2 to M4, M10), then phase 4 removals, then phase 5.
+
 ## Risks
 
 - IL2CPP: method bodies aren't readable, only types and signatures. Whether a type reads the player static each time or caches it has to be probed per type (phase 2).
@@ -52,3 +86,14 @@ Each phase ends with the scripted run in phase 0 passing, host-led and guest-led
 - 2026-11-09 **Phase 1 done.** `Sync/Intents.cs`, message `Intent` (protocol 55): Interact, Enter, Call (the eight entry points a guest's copy still reaches by itself), DefaultTalk. `Intents.Actor` is the guest whose intent is running. Pick and Next stay with the conversation (leader only). Behaviour unchanged; the run passes both ways.
 - 2026-11-09 **Phase 2 done.** `Sync/ActingPlayer.cs`: while one AI updates (and while a guest's intent or a detector ticked for a guest runs), the game's shared player references (`TransformReference` assets `PlayerTransformReference` and `PlayerHead`, their `.transform` field) point at that guest's puppet. `GeneralAIController.s_playerRef` is not what the AI's getters read; replacing it does nothing. `Sync/AreaSync.cs` (protocol 56, intents AreaEnter and AreaExit): `PlayerTrigger` is a physics trigger a puppet never trips, and it is what starts the old woman's door talk (`Player in area detection_ Outside Fence`), so a guest's copy reports walking in and out instead of running its events, and the host runs its own copy's; entered by the first player in, left by the last one out. "Stand the host on the guest" is deleted. The callback-less DefaultTalk fallback is still there but now logs a warning when used; the regression's guest-led run no longer reaches it. Regression passes both ways. Other physics triggers a puppet can't trip (`POI_PlayerAreaTrigger`, `CombinedTriggerElement`, `SlowZone`, `VillageDoor`) are not handled yet; do them in phase 3 as they come up.
 - 2026-11-10 **Phase 3, first slice (the tutorial yard).** Protocol 57. `TutorialSync`: only the host's tutorial moves; a task done on a guest's copy is a `TutorialSolve` intent, the host solves its own current task, guests follow one step at a time (a block that a save loaded but did not start is started first: the host also sends whether its block is running). `AreaSync`: a `PlayerTrigger`'s calls are sorted per listener into story and local (camera, sound, compass); a guest's story calls are switched off at the source and sent as intents, local ones stay native on every copy. The old woman's `TutorialDialoguePiece.RunDialogue` never runs on a guest (the host's story runs it, with its callbacks; her "one more thing" comes when a player heads out of the yard, not when the journal closes). `ActiveSync` carries an NPC's interact prompt. `ConditionSync`: guests no longer send gate changes; when a guest shuts the yard gate the host is brought in too (inwards is the yard's own inside area, not the door's axes). Dev: `-coopnoinput` (keyboard, mouse, pads off in scripted runs), commands `areas`, `journal`, `pieces`. Scenario `yard` in `mod/regress.py` (door talk, in through the gate, her talk, the book, the three journal tasks, gate reopens, her next talk, popups); door and yard pass host-led and guest-led. Still to silence at the source: `TasksTracker` evaluation, `QuestRunner`, `POI_Event`, the physics triggers a puppet can't trip (`POI_PlayerAreaTrigger`, `CombinedTriggerElement`, `SlowZone`, `VillageDoor`, `TeleportPlayerHomeOnTriggerEnter`, `TriggerDayTimeChanger`), and the `Call` entries as plain interact intents.
+- 2026-11-10 **Phase 3, tutorial beats 5 to 8** (gathering, the Lutki's planks, the talisman, teleporting home, her two
+  talks). Protocol 58. `TrialSync`: the trial tracker is host-only: a guest's tasks are done when the host's are
+  (`ProgressionTask.Evaluate` answers from the mirrored state), the tracker's story-event handlers and
+  `OnFinishedQuestStep` on a guest are a `TrackerEvent` intent, and the guest-to-host progress channel (Gain) is gone;
+  the digest repair takes the host's values wholesale. A guest's pickups still reach the host's tasks as stat deltas.
+  Fixed a host crash from the yard slice: the hook on `PlayerTrigger.OnDisable` trapped inside GameAssembly the first
+  time a trigger switched itself off (anyone coming back to the yard with the talisman). `SaveableSync`: a guest's
+  place history now takes the host's map number. Dev: `patchaddrs` (every patched method with its address, to find a
+  hook from a crash offset), `backport port`. Regression: scenarios `lutki` and `home`, fixtures `after-yard`,
+  `talisman`, `pine` (local/saves), `--save=NAME`, and a locked log now stops the run instead of reading a stale one.
+  Survey of all story machinery by type in `research/story-survey.md`; the checklist above comes from it.

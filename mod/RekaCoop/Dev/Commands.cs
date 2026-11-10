@@ -714,6 +714,7 @@ internal static class Commands
             var target = bp.GetTeleportPosition();
             string Probe() => $"me={me.transform.position} target={(target == null ? "null" : target.position.ToString())} hut={Sync.HutSync.Hut?.transform.position} porting={bp.porting} active={bp.isActiveAndEnabled} override={bp.teleportToOverwrite} hold={bp.timeToHold} wait={bp.timeToWaitBeforePorting} cd={bp.betweenPortTimer}/{bp.cdBetweenPorts} buildup={bp.teleportBuildUp} H={Rewired.ReInput.players.GetPlayer(0).GetButton("Backport")}";
             if (a.Length > 1 && a[1] == "go") { var before = Probe(); bp.ActualPort(); return before + " -> " + Probe(); }
+            if (a.Length > 1 && a[1] == "port") { bp.Port(); return "porting the way the held key does"; }
             return Probe();
         }
         if (a[0] == "hutmode") { var hut = Sync.HutSync.Hut; hut.SetControlMode(System.Enum.Parse<ChickenLegsBehaviour.ControlMode>(a[1])); return HutProbe(hut); }
@@ -876,6 +877,33 @@ internal static class Commands
             return "message queued";
         }
         // map [id 0|1]: compass elements highlighted here, or highlight one the way the game does
+        if (a[0] == "patchaddrs")
+        {
+            // patchaddrs: every game method the mod patches with its address in GameAssembly.dll, to patchaddrs.txt.
+            // Methods that share an address (the compiler folds identical bodies) are marked: a patch on one is a patch on all.
+            long gameBase = 0;
+            foreach (System.Diagnostics.ProcessModule m in System.Diagnostics.Process.GetCurrentProcess().Modules)
+                if (m.ModuleName == "GameAssembly.dll") gameBase = m.BaseAddress.ToInt64();
+            var rows = new List<(long rva, string name)>();
+            foreach (var m in HarmonyLib.Harmony.GetAllPatchedMethods())
+            {
+                try
+                {
+                    var f = Il2CppInterop.Common.Il2CppInteropUtils.GetIl2CppMethodInfoPointerFieldForGeneratedMethod(m);
+                    if (f == null) continue;
+                    var info = (IntPtr)f.GetValue(null);
+                    if (info == IntPtr.Zero) continue;
+                    long ptr = System.Runtime.InteropServices.Marshal.ReadIntPtr(info).ToInt64();
+                    rows.Add((ptr - gameBase, $"{m.DeclaringType?.FullName}.{m.Name}"));
+                }
+                catch (Exception e) { rows.Add((-1, $"{m.DeclaringType?.FullName}.{m.Name}: {e.Message}")); }
+            }
+            rows.Sort();
+            var shared = rows.GroupBy(r => r.rva).Where(g => g.Count() > 1).Select(g => g.Key).ToHashSet();
+            File.WriteAllLines(Path.Combine(BepInEx.Paths.GameRootPath, "patchaddrs.txt"),
+                rows.Select(r => $"{r.rva:x8} {(shared.Contains(r.rva) ? "SHARED " : "")}{r.name}"));
+            return $"{rows.Count} patched methods, {shared.Count} shared addresses; wrote patchaddrs.txt";
+        }
         if (a[0] == "gates")
             return string.Join(" | ", UnityEngine.Object.FindObjectsByType<Tutorial_FenceGateLock>(FindObjectsInactive.Include, FindObjectsSortMode.None)
                 .Select(g => $"{Sync.ScenePath.Of(g.transform)} active={g.isActiveAndEnabled} completed={g.isCompleted} pending={g.openPending} " +

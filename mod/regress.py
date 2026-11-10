@@ -101,7 +101,8 @@ def start(fixture):
         except OSError: pass
         # The last launch's log out of the way, so its lines aren't taken for this launch's.
         try: os.replace(log_path(inst), log_path(inst) + ".prev")
-        except OSError: pass
+        except FileNotFoundError: pass
+        except OSError as e: raise SystemExit(f"{inst}'s log is held by another process ({e}); the games would log elsewhere")
     r = ps("launch.ps1", "-Instances", f"{HOST},{GUEST}", "-Names", f"{SAVE_NAME},{SAVE_NAME}-guest",
            "-ExtraArgs", "'-coopautoload','-coopnoinput'")
     if r.returncode != 0: raise SystemExit(f"launch failed: {r.stdout}\n{r.stderr}")
@@ -278,7 +279,105 @@ def yard(run, leader):
     run.check("both tutorials at the same place", tutorial_at(HOST) == tutorial_at(GUEST), f"{tutorial_at(HOST)} / {tutorial_at(GUEST)}")
 
 
-SCENARIOS = {"door": ("pre-door-1.0.32", door), "yard": ("pre-door-1.0.32", yard)}
+def trial_tasks(inst):
+    """The current trial's tasks as a string of x (done) and . (open)."""
+    m = re.search(r"tasks \[([x.]*)\]", cmd(inst, "trials"))
+    return m.group(1) if m else ""
+
+
+def tasks_done(run, upto, why):
+    """Tasks 0..upto of the trial are done on both copies (the host decides, the guest follows)."""
+    want = "x" * (upto + 1)
+    for _ in range(10):
+        if all(trial_tasks(i).startswith(want) for i in (HOST, GUEST)): break
+        time.sleep(1.5)
+    for inst in (HOST, GUEST):
+        got = trial_tasks(inst)
+        run.check(f"{inst}: task {upto} done once {why}", got.startswith(want) and not got.startswith(want + "x"), got)
+
+
+def collect(inst, kind, n):
+    got = 0
+    for _ in range(n):
+        if "Collected" in cmd(inst, f"collect {kind}").splitlines()[0].split(":")[-1]: got += 1
+        time.sleep(1.2)
+    return got
+
+
+def lutki(run, leader):
+    """After the yard: mushrooms and honeycombs for the soup (both players gather), the Lutki's four planks (both take
+    some), the talisman (the leader takes it)."""
+    lead, other = (HOST, GUEST) if leader == "host" else (GUEST, HOST)
+    for inst in (HOST, GUEST): dismiss(inst)
+    a, b = collect(lead, "Mushroom", 5), collect(other, "Mushroom", 5)
+    run.check("ten mushrooms gathered between them", a + b == 10, f"{a} + {b}")
+    tasks_done(run, 0, "the mushrooms are in")
+    a, b = collect(lead, "Honey", 1), collect(other, "Honey", 1)
+    run.check("honeycombs gathered by both", a + b == 2, f"{a} + {b}")
+    tasks_done(run, 1, "the honeycombs are in")
+    # The Lutki village: planks lie on a trapped Lutki; with all four of its planks gone it stands and the talisman can be taken.
+    cmd(lead, "tp 0 108 9"); cmd(other, "tp 2 108 9")
+    time.sleep(5)
+    for inst in (HOST, GUEST):
+        d = cmd(inst, "detections 25")
+        run.check(f"{inst}: the talisman can't be taken yet", "talisman_01/Player Detection on=False" in d, d[:200])
+    for k in range(12):
+        if "nothing" in cmd(lead if k % 2 == 0 else other, "collect Wood").splitlines()[0]: break
+        time.sleep(1.5)
+    time.sleep(8)
+    for inst in (HOST, GUEST):
+        d = cmd(inst, "detections 25")
+        run.check(f"{inst}: the talisman can be taken once the planks are gone", "talisman_01/Player Detection on=True" in d, d[:200])
+    r = cmd(lead, "interact talisman")
+    run.check("the talisman is taken", "interacted with" in r, r[:160])
+    time.sleep(8)
+    tasks_done(run, 2, f"the {leader} has the talisman")
+    for inst in (HOST, GUEST):
+        st = cmd(inst, "status")
+        run.check(f"{inst}: has the teleport charm", "Backport" in st, st[-120:])
+        run.check(f"{inst}: got the popup for it", dismiss(inst) > 0)
+
+
+def home(run, leader):
+    """With the talisman: teleport home, back into the yard (her talk starts by itself), then inside to talk to her;
+    she sends them for the pine branch."""
+    lead, other = (HOST, GUEST) if leader == "host" else (GUEST, HOST)
+    for inst in (HOST, GUEST): dismiss(inst)
+    cmd(lead, "tp 60 40 4")
+    time.sleep(3)
+    cmd(lead, "backport port")
+    time.sleep(12)
+    for inst in (HOST, GUEST): dismiss(inst)
+    x, _, z = pos(lead)
+    run.check(f"the {leader} is back at the gate", abs(x - 83.8) < 3 and abs(z - 16.6) < 3, f"{x:.1f}, {z:.1f}")
+    tasks_done(run, 3, f"the {leader} teleported home")
+    mark = len(read_log(HOST))
+    cmd(lead, "walkto 80.6 13.6 8")   # into the yard: the yard's trigger switches itself off here (it crashed the host once)
+    started = False
+    for _ in range(15):
+        if "talking=True" in cmd(HOST, "dlgprobe"): started = True; break
+        time.sleep(1)
+    run.check("her talk started on the host as they came in", started)
+    run.check("her talk ended", finish_talk(lead))
+    time.sleep(3)
+    p = cmd(HOST, "pieces")
+    run.check("she waits inside with the next talk", "current=Tutorial/C00_Tutorial/BabaJaga/005" in p, p[:80])
+    cmd(lead, "walkto 78.3 9.5 10")
+    time.sleep(11)
+    r = cmd(lead, "interact AtHome")
+    run.check("she can be talked to inside", "interacted with Baba Jaga_AtHome" in r, r[:160])
+    time.sleep(4)
+    run.check("that talk started on the host", "talking=True" in cmd(HOST, "dlgprobe"))
+    run.check("that talk ended", finish_talk(lead))
+    time.sleep(4)
+    tasks_done(run, 4, "she has been talked to inside")
+    run.check("the host's story ran both talks", "nothing here started" not in read_log(HOST)[mark:])
+    for inst in (HOST, GUEST): dismiss(inst)
+    run.check("both tutorials at the same place", tutorial_at(HOST) == tutorial_at(GUEST), f"{tutorial_at(HOST)} / {tutorial_at(GUEST)}")
+
+
+SCENARIOS = {"door": ("pre-door-1.0.32", door), "yard": ("pre-door-1.0.32", yard),
+             "lutki": ("after-yard-1.0.32", lutki), "home": ("talisman-1.0.32", home)}
 
 
 def main():
@@ -299,6 +398,16 @@ def main():
             except (TimeoutError, SystemExit) as e:
                 run.check("run completed", False, str(e))
             runs.append(run)
+    save = next((a.split("=", 1)[1] for a in sys.argv if a.startswith("--save=")), None)
+    if save and runs and runs[-1].passed:
+        cmd(HOST, "save")
+        time.sleep(10)
+        folder = os.path.join(GAME, HOST, "CoopSaves", SAVE_NAME, "- 1 -")
+        slot = max((d for d in os.listdir(folder)), key=lambda d: os.path.getmtime(os.path.join(folder, d)))
+        dst = os.path.join(ROOT, "local", "saves", save, "- 1 -", "1")
+        if os.path.isdir(dst): raise SystemExit(f"fixture {save} exists; not overwritten")
+        shutil.copytree(os.path.join(folder, slot), dst)
+        print(f"saved the host's world as fixture {save} (from slot {slot})")
     if not keep: stop()
     print()
     for run in runs:

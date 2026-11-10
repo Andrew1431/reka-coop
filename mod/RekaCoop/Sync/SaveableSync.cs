@@ -284,6 +284,11 @@ public static class SaveableSync
         try
         {
             e.Saveable.RestoreSavedState(Deserialize(xml));
+            // The place history's restore leaves out which map this is (the game counts it up on entering a map, which
+            // a guest taking the host's world doesn't do), so a guest would file its visits under map 0.
+            if (key.StartsWith("PoiMapHistoryTracker") && System.Text.RegularExpressions.Regex.Match(xml, @"<currentMapNumber>(-?\d+)</currentMapNumber>") is { Success: true } m
+                && RekaCoop.Sync.Find.One<PoiMapHistoryTracker>() is { } history)
+                history.currentMapNumber = int.Parse(m.Groups[1].Value);
             Applied[key] = Capture(e) ?? xml;  // as it reads back here, so our own-unlock check doesn't send it back
             Plugin.Logger.LogInfo($"Saveables: restored {key}");
             return true;

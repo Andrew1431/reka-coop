@@ -178,8 +178,6 @@ internal static class AreaSync
     [HarmonyFinalizer, HarmonyPatch(typeof(PlayerTrigger), nameof(PlayerTrigger.FireHeldExit))]
     private static void HeldPost() => End();
 
-    [HarmonyPrefix, HarmonyPatch(typeof(PlayerTrigger), nameof(PlayerTrigger.OnDisable))]
-    private static void DisablePre(PlayerTrigger __instance) => Begin(__instance);
-    [HarmonyFinalizer, HarmonyPatch(typeof(PlayerTrigger), nameof(PlayerTrigger.OnDisable))]
-    private static void DisablePost() => End();
+    // Not PlayerTrigger.OnDisable: hooking it crashes the game (a trap inside GameAssembly at OnDisable+0x15) the first
+    // time a trigger switches itself off, e.g. the yard's when a player comes back with the talisman.
 }
