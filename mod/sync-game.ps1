@@ -11,6 +11,11 @@ if (Get-Process Reka -ErrorAction SilentlyContinue) { throw 'Close every Reka fi
 $gameRoot = Join-Path $PSScriptRoot '..\game' | Resolve-Path
 if (-not $Instances) { $Instances = Get-ChildItem -LiteralPath $gameRoot -Directory | Where-Object { Test-Path (Join-Path $_.FullName 'Reka.exe') } | Select-Object -ExpandProperty Name }
 
+# Paths past Windows' 260 characters (some asset bundles, depending on where the copies live) need the \\?\ form,
+# and New-Item can't make a hardlink to one at all.
+function Long([string]$p) { if ($p.Length -ge 240 -and -not $p.StartsWith('\\?\')) { '\\?\' + $p } else { $p } }
+Add-Type -Namespace RekaSync -Name Native -MemberDefinition '[DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)] public static extern bool CreateHardLink(string link, string target, IntPtr attrs);'
+
 # The Steam folder may have Reka Co-op installed (a release playtest): those files never go into the dev copies.
 $modFiles = '^(BepInEx|dotnet|_RekaCoop_removed)\\|^(winhttp\.dll|doorstop_config\.ini|\.doorstop_version|changelog\.txt|README-RekaCoop\.txt|[^\\]+\.bat)$'
 $steamFiles = Get-ChildItem -LiteralPath $Steam -Recurse -File | Where-Object { $_.FullName.Substring($Steam.Length).TrimStart('\') -notmatch $modFiles }
@@ -20,11 +25,13 @@ foreach ($inst in $Instances) {
     foreach ($f in $steamFiles) {
         $rel = $f.FullName.Substring($Steam.Length).TrimStart('\')
         $dest = Join-Path $root $rel
-        $d = Get-Item -LiteralPath $dest -ErrorAction SilentlyContinue
+        $d = Get-Item -LiteralPath (Long $dest) -ErrorAction SilentlyContinue
         if ($d -and $d.Length -eq $f.Length -and $d.LastWriteTimeUtc -eq $f.LastWriteTimeUtc) { continue }
         New-Item -ItemType Directory -Force -Path (Split-Path $dest) | Out-Null
-        if ($d) { Remove-Item -LiteralPath $dest -Force }
-        New-Item -ItemType HardLink -Path $dest -Target $f.FullName | Out-Null
+        if ($d) { Remove-Item -LiteralPath (Long $dest) -Force }
+        if (-not [RekaSync.Native]::CreateHardLink((Long $dest), (Long $f.FullName), [IntPtr]::Zero)) {
+            throw "hardlink $dest failed: Win32 error $([Runtime.InteropServices.Marshal]::GetLastWin32Error())"
+        }
         $linked++
     }
     # Game files the patch removed (only under the game's own folders).
@@ -34,10 +41,10 @@ foreach ($inst in $Instances) {
         if (-not (Test-Path -LiteralPath $dir)) { continue }
         foreach ($c in Get-ChildItem -LiteralPath $dir -Recurse -File) {
             $rel = $c.FullName.Substring($root.Length).TrimStart('\')
-            if (Test-Path -LiteralPath (Join-Path $Steam $rel)) { continue }
+            if (Test-Path -LiteralPath (Long (Join-Path $Steam $rel))) { continue }
             $to = Join-Path $root "_removed-by-patch\$rel"
             New-Item -ItemType Directory -Force -Path (Split-Path $to) | Out-Null
-            Move-Item -LiteralPath $c.FullName -Destination $to
+            Move-Item -LiteralPath (Long $c.FullName) -Destination (Long $to)
             $moved++
         }
     }
