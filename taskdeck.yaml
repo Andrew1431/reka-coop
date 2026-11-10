@@ -1,0 +1,76 @@
+version: 1
+name: Reka Co-op
+description: >
+  Co-op mod for Reka (BepInEx 6 IL2CPP). The regression suite plays the tutorial with two test copies of the game,
+  on this PC and on Olga's PC over SSH. The Olga group is the switch for her PC.
+
+actions:
+  olga-stop:
+    title: STOP tests on Olga's PC
+    description: Stops the run and closes the test games on Olga's PC now, and keeps tests off there until "Allow". Only test copies are closed, never a Reka she started from Steam. Safe to press any time.
+    group: Olga
+    run: powershell -NoProfile -ExecutionPolicy Bypass -File mod/olga.ps1 stop
+    risk: low
+  olga-allow:
+    title: Allow tests on Olga's PC
+    description: Undoes STOP, so runs may start on Olga's PC again. Starts nothing by itself.
+    group: Olga
+    run: powershell -NoProfile -ExecutionPolicy Bypass -File mod/olga.ps1 allow
+    risk: low
+    agent: propose
+  olga-status:
+    title: What is Olga's PC doing
+    description: Shows whether tests are paused there, whether a run is going, and the last lines of its output.
+    group: Olga
+    run: powershell -NoProfile -ExecutionPolicy Bypass -File mod/olga.ps1 status
+    risk: low
+  olga-deploy:
+    title: Send the current build to Olga's PC
+    description: Copies the built mod, the test scripts and the save fixtures into the test copies on Olga's PC. Build first; no run may be going there.
+    group: Olga
+    run: powershell -NoProfile -ExecutionPolicy Bypass -File mod/olga.ps1 deploy
+    risk: medium
+  olga-run:
+    title: Run the suite on Olga's PC
+    description: Starts regress.py on Olga's PC and returns; two game windows open on her screen, so she must be logged in and away. No scenario means the whole playthrough for both leaders (about 15 minutes).
+    group: Olga
+    run: powershell -NoProfile -ExecutionPolicy Bypass -File mod/olga.ps1 run
+    kind: detached
+    risk: medium
+    params:
+      scenario: { type: enum, choices: [door, yard, lutki, home], position: 0, description: One scenario from its own fixture instead of the whole playthrough. }
+      leader: { type: enum, choices: [host, guest], position: 1, description: Who leads; both when omitted. }
+  olga-sync:
+    title: Relink Olga's test copies after a game patch
+    description: After Reka updates on Olga's PC, points her test copies at the new game files. No test game may be running there.
+    group: Olga
+    run: powershell -NoProfile -ExecutionPolicy Bypass -File mod/olga.ps1 sync
+    risk: medium
+
+  stop:
+    title: Stop the test games here
+    description: Closes the test copies on this PC (never the Steam game) and puts the player's settings back.
+    group: This PC
+    run: powershell -NoProfile -ExecutionPolicy Bypass -File mod/stop.ps1
+    risk: low
+  build:
+    title: Build and install the mod (dev)
+    description: Builds the dev build and installs it into the local test copies. Stop the test games first.
+    group: This PC
+    run: powershell -NoProfile -ExecutionPolicy Bypass -Command "& 'mod\build.ps1' -NoRemote"
+    risk: low
+  regress:
+    title: Run the suite here
+    description: Plays the tutorial with two local test copies and checks they agree. No scenario means the whole playthrough for both leaders (about 16 minutes); the windows take over the screen meanwhile.
+    group: This PC
+    run: python mod/regress.py
+    risk: low
+    params:
+      scenario: { type: enum, choices: [door, yard, lutki, home], position: 0, description: One scenario from its own fixture instead of the whole playthrough. }
+      leader: { type: enum, choices: [host, guest], position: 1, description: Who leads; both when omitted. }
+  sync-game:
+    title: Relink local test copies after a game patch
+    description: After Reka updates in Steam, points the local test copies at the new game files. Close every Reka first; then launch a copy once so BepInEx regenerates its bindings.
+    group: This PC
+    run: powershell -NoProfile -ExecutionPolicy Bypass -File mod/sync-game.ps1
+    risk: medium
