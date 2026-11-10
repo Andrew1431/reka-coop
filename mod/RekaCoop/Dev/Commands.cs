@@ -1082,6 +1082,13 @@ internal static class Commands
             var cam = UnityEngine.Object.FindFirstObjectByType<DialogueCamera>(FindObjectsInactive.Include);
             return $"live={cam._live} onPlayer={cam._onPlayerCamera} shot={cam._shotName} reason={cam._shotReason} transition={cam._lastTransitionDescription} speaker={cam._sessionSpeakerName} head={cam._sessionHead?.name} vcam={cam._vcam?.name} prio={cam._vcam?.Priority} enabled={cam.isActiveAndEnabled} gen={cam._sessionGeneration} retry={cam._retryPending}";
         }
+        if (a[0] == "kick")
+        {
+            // kick <player id>: host drops that guest's connection; the guest joins again by itself (a join mid-talk, mid-anything)
+            if (CoopDriver.Session == null) return "no session";
+            CoopDriver.Session.Kick(int.Parse(a[1]));
+            return $"dropped player {a[1]}";
+        }
         if (a[0] == "talknpc") return Sync.DialogueSync.TalkToNearest(a.Length > 1 ? a[1] : null);
         if (a[0] == "talkoptions") return Sync.DialogueSync.TestOptions();
         if (a[0] == "pick")
