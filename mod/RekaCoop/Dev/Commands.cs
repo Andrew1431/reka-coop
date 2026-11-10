@@ -97,8 +97,9 @@ internal static class Commands
         _nextCheck = Time.unscaledTime + 0.25f;
         var request = Path.Combine(BepInEx.Paths.GameRootPath, "cmd.request");
         if (!File.Exists(request)) return;
-        var lines = File.ReadAllLines(request);
-        File.Delete(request);
+        string[] lines;
+        try { lines = File.ReadAllLines(request); File.Delete(request); }
+        catch (IOException) { return; }   // the sender still has it open; next time
         foreach (var line in lines)
         {
             if (string.IsNullOrWhiteSpace(line)) continue;

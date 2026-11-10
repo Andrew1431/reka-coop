@@ -3,8 +3,11 @@
 Starts `play` (host) and `client` (guest) on a copy of a fixture save in its own save folder, drives a scenario with
 dev commands (cmd.request), and checks the two copies agree and nobody is stuck.
 
-  python mod/regress.py                 every scenario, host-led then guest-led
-  python mod/regress.py door guest      one scenario, one leader
+  python mod/regress.py                 one chained playthrough of every scenario in story order, host-led then guest-led
+  python mod/regress.py guest           the same, guest-led only
+  python mod/regress.py home guest      one scenario alone, from its own fixture (several names: each alone)
+  python mod/regress.py --each          every scenario alone
+  python mod/regress.py --fixtures      chained, and the host's world before each step is saved as that step's fixture
   python mod/regress.py --keep ...      leave the games running afterwards
 
 Fixtures live in local/saves/<name>/ (a save folder such as "- 1 -" inside). Exit code 0 = all checks passed.
@@ -59,14 +62,37 @@ def cmd(inst, text, wait=8.0):
     raise TimeoutError(f"{inst}: no answer to '{text}'")
 
 
-def wait_log(inst, pattern, timeout, since=0):
+def wait_log(inst, pattern, timeout, since=0, every=1.0):
     end = time.time() + timeout
     rx = re.compile(pattern)
     while time.time() < end:
         m = rx.search(read_log(inst)[since:])
         if m: return m
-        time.sleep(1)
+        time.sleep(every)
     return None
+
+
+def until(pred, timeout, every=0.5):
+    """Waits until pred() is true (at most timeout seconds); returns whether it became true."""
+    end = time.time() + timeout
+    while True:
+        try:
+            if pred(): return True
+        except TimeoutError:
+            pass
+        if time.time() >= end: return False
+        time.sleep(every)
+
+
+def walk(inst, x, z, secs):
+    """Walks there with real movement input and returns when the walk has stopped (arrived, or out of time)."""
+    mark = len(read_log(inst))
+    cmd(inst, f"walkto {x} {z} {secs}")
+    wait_log(inst, r"walkto: stopped", secs + 3, since=mark, every=0.25)
+    time.sleep(0.5)
+
+
+def talking(inst=None): return "talking=True" in cmd(inst or HOST, "dlgprobe")
 
 
 def pos(inst):
@@ -117,18 +143,26 @@ def stop(): ps("stop.ps1")
 
 def common_checks(run):
     """What must hold at the end of any scenario."""
+    until(lambda: not talking(HOST) and not talking(GUEST), 8)
+    time.sleep(1.5)
     for inst in (HOST, GUEST):
         probe = cmd(inst, "dlgprobe")
         run.check(f"{inst}: no dialogue left on screen", "talking=False" in probe and "options=False" in probe, probe[:160])
-        a = pos(inst)
-        x, _, z = a
-        cmd(inst, f"walkto {x + 3:.1f} {z + 3:.1f} 4")
-        time.sleep(4.5)
-        b = pos(inst)
-        moved = ((a[0] - b[0]) ** 2 + (a[2] - b[2]) ** 2) ** 0.5
+        dismiss(inst)
+        moved = 0
+        for dx, dz in ((3, 3), (-3, -3), (3, -3)):   # indoors one of these is a wall
+            a = pos(inst)
+            walk(inst, round(a[0] + dx, 1), round(a[2] + dz, 1), 4)
+            b = pos(inst)
+            moved = ((a[0] - b[0]) ** 2 + (a[2] - b[2]) ** 2) ** 0.5
+            if moved > 0.7: break
         run.check(f"{inst}: can walk", moved > 0.7, f"moved {moved:.2f} m")
-    # Two digest rounds (15 s each) after things settle.
-    time.sleep(40)
+    # A digest round runs every 15 s: one full round after things settle, then up to two more for it to come out equal.
+    time.sleep(16)
+    def same():
+        cats = [c.strip() for c in cmd(GUEST, "digest").splitlines()[0].split(";") if c.strip()]
+        return cats and all(" same" in c for c in cats)
+    until(same, 32, every=4)
     d = cmd(GUEST, "digest").splitlines()[0]  # log lines written just after it follow
     cats = [c.strip() for c in d.split(";") if c.strip()]
     bad = [c for c in cats if " same" not in c]
@@ -161,9 +195,7 @@ def door(run, leader):
     time.sleep(15)
     mark = len(read_log(HOST))
     cmd(lead, "walkto 88 15 12")
-    time.sleep(13)
-    probe = cmd(HOST, "dlgprobe")
-    run.check("the door talk started on the host", "talking=True" in probe, probe[:160])
+    run.check("the door talk started on the host", until(talking, 16))
     led_by_guest = "conversation led by " + SAVE_NAME + "-guest" in read_log(HOST)[mark:]
     run.check(f"the {leader} leads the talk", led_by_guest == (leader == "guest"), f"led by guest: {led_by_guest}")
     run.check("the host's own story started it (no callback-less copy)", "nothing here started" not in read_log(HOST)[mark:])
@@ -171,7 +203,7 @@ def door(run, leader):
         if "talking=False" in cmd(HOST, "dlgprobe"): break
         cmd(lead, "next")
         time.sleep(1.5)
-    time.sleep(6)
+    until(lambda: all(gate_state(i)[0] for i in (HOST, GUEST)), 10)
     for inst in (HOST, GUEST):
         ok, g = gate_state(inst)
         run.check(f"{inst}: gate open after the talk", ok, g[:200])
@@ -182,11 +214,11 @@ def tutorial_at(inst):
     return (int(m.group(1)), int(m.group(2))) if m else None
 
 
-def finish_talk(lead, tries=30):
+def finish_talk(lead, tries=70):
     for _ in range(tries):
         if "talking=False" in cmd(HOST, "dlgprobe"): return True
         cmd(lead, "next")
-        time.sleep(1.5)
+        time.sleep(1.0)
     return False
 
 
@@ -213,13 +245,10 @@ def in_yard(inst):
 
 def yard(run, leader):
     """After the door talk: in through the gate (it shuts behind), the old woman's talk, the book on the bench, the
-    three journal tasks, the gate opens again and she has one more thing to say."""
-    door(run, leader)
+    three journal tasks, the gate opens again and she has one more thing to say. Fixture: after the door talk."""
     lead, other = (HOST, GUEST) if leader == "host" else (GUEST, HOST)
-    cmd(lead, "walkto 84.2 17.9 8")   # in front of the gate, then through it
-    time.sleep(9)
-    cmd(lead, "walkto 80.6 13.6 8")
-    time.sleep(10)
+    walk(lead, 84.2, 17.9, 8)   # in front of the gate, then through it
+    walk(lead, 80.6, 13.6, 8)
     for inst in (HOST, GUEST):
         g = cmd(inst, "gates")
         run.check(f"{inst}: gate shut behind the {leader}", "open=False" in g and "locked=True" in g, g[:200])
@@ -227,19 +256,17 @@ def yard(run, leader):
     mark = len(read_log(HOST))
     r = cmd(lead, "interact AtHome")
     run.check("the old woman can be talked to", "interacted with Baba Jaga_AtHome" in r, r[:160])
-    time.sleep(3)
-    run.check("her talk started on the host", "talking=True" in cmd(HOST, "dlgprobe"))
+    run.check("her talk started on the host", until(talking, 8))
     run.check("her talk ended", finish_talk(lead))
-    time.sleep(5)
+    until(lambda: all("Collectible_Journal/Player Detection on=True" in cmd(i, "detections 12") for i in (HOST, GUEST)), 8)
     run.check("the host's story ran it", "nothing here started" not in read_log(HOST)[mark:])
     for inst in (HOST, GUEST):
         d = cmd(inst, "detections 12")
         run.check(f"{inst}: the book can be taken", "Collectible_Journal/Player Detection on=True" in d, d[:300])
-    cmd(lead, "walkto 82.3 13.7 6")
-    time.sleep(7)
+    walk(lead, 82.3, 13.7, 6)
     r = cmd(lead, "interact Journal")
     run.check("the book is taken", "interacted with Collectible_Journal" in r, r[:160])
-    time.sleep(8)
+    until(lambda: tutorial_at(HOST) == (2, 1) and tutorial_at(GUEST) == (2, 1), 12)
     steps = [(None, 1, "took the book"), ("journal open", 2, "opened the journal"),
              ("journal page Quests", 3, "went to the Quests tab"), ("journal closeui", 4, "closed the journal")]
     mark = len(read_log(HOST))
@@ -247,34 +274,29 @@ def yard(run, leader):
         if c:
             for _ in range(5):   # the journal opens once this copy knows it has it
                 if "manager on" in cmd(lead, c): break
-                time.sleep(3)
-            time.sleep(6)
+                time.sleep(2)
+            until(lambda: tutorial_at(HOST) == (2, task) and tutorial_at(GUEST) == (2, task), 10)
         for inst in (HOST, GUEST):
             at = tutorial_at(inst)
             run.check(f"{inst}: tutorial moved on when the {leader} {what}", at == (2, task), f"at {at}")
-    time.sleep(4)
+    until(lambda: all(gate_state(i)[0] for i in (HOST, GUEST)), 10)
     for inst in (HOST, GUEST):
         ok, g = gate_state(inst)
         run.check(f"{inst}: gate open after the journal", ok, g[:200])
     # She has one more thing to say as they head out of the yard.
-    cmd(other, "walkto 84.6 18.3 6")
-    time.sleep(3)
+    walk(other, 84.6, 18.3, 6)
     cmd(lead, "walkto 84.2 17.9 6")
-    started = False
-    for _ in range(20):
-        if "talking=True" in cmd(HOST, "dlgprobe"): started = True; break
-        time.sleep(1)
-    run.check("her next talk started on the host as they left", started)
+    run.check("her next talk started on the host as they left", until(talking, 20))
     ended = False
     for _ in range(30):
         if "talking=False" in cmd(HOST, "dlgprobe"): ended = True; break
         for inst in (lead, other): cmd(inst, "next")   # whoever leads it
         time.sleep(1.5)
     run.check("her next talk ended", ended)
-    time.sleep(3)
     for inst in (HOST, GUEST):   # "you have been told about a location", "her birds are yours to use"
+        until(lambda: any(f":'{l}'" in cmd(inst, "buttons") for l in ("OK", "Continue", "CLAIM")), 6)
         run.check(f"{inst}: got the popups that follow it", dismiss(inst) > 0)
-    time.sleep(5)
+    time.sleep(2)
     run.check("the host's story ran that too", "nothing here started" not in read_log(HOST)[mark:])
     run.check("both tutorials at the same place", tutorial_at(HOST) == tutorial_at(GUEST), f"{tutorial_at(HOST)} / {tutorial_at(GUEST)}")
 
@@ -317,24 +339,24 @@ def lutki(run, leader):
     tasks_done(run, 1, "the honeycombs are in")
     # The Lutki village: planks lie on a trapped Lutki; with all four of its planks gone it stands and the talisman can be taken.
     cmd(lead, "tp 0 108 9"); cmd(other, "tp 2 108 9")
-    time.sleep(5)
+    time.sleep(4)
     for inst in (HOST, GUEST):
         d = cmd(inst, "detections 25")
         run.check(f"{inst}: the talisman can't be taken yet", "talisman_01/Player Detection on=False" in d, d[:200])
     for k in range(12):
         if "nothing" in cmd(lead if k % 2 == 0 else other, "collect Wood").splitlines()[0]: break
         time.sleep(1.5)
-    time.sleep(8)
+    until(lambda: all("talisman_01/Player Detection on=True" in cmd(i, "detections 25") for i in (HOST, GUEST)), 12)
     for inst in (HOST, GUEST):
         d = cmd(inst, "detections 25")
         run.check(f"{inst}: the talisman can be taken once the planks are gone", "talisman_01/Player Detection on=True" in d, d[:200])
     r = cmd(lead, "interact talisman")
     run.check("the talisman is taken", "interacted with" in r, r[:160])
-    time.sleep(8)
     tasks_done(run, 2, f"the {leader} has the talisman")
     for inst in (HOST, GUEST):
         st = cmd(inst, "status")
         run.check(f"{inst}: has the teleport charm", "Backport" in st, st[-120:])
+        until(lambda: any(f":'{l}'" in cmd(inst, "buttons") for l in ("OK", "Continue", "CLAIM")), 8)
         run.check(f"{inst}: got the popup for it", dismiss(inst) > 0)
 
 
@@ -346,73 +368,107 @@ def home(run, leader):
     cmd(lead, "tp 60 40 4")
     time.sleep(3)
     cmd(lead, "backport port")
-    time.sleep(12)
+    until(lambda: abs(pos(lead)[0] - 83.8) < 3 and abs(pos(lead)[2] - 16.6) < 3, 14)
+    time.sleep(2)
     for inst in (HOST, GUEST): dismiss(inst)
     x, _, z = pos(lead)
     run.check(f"the {leader} is back at the gate", abs(x - 83.8) < 3 and abs(z - 16.6) < 3, f"{x:.1f}, {z:.1f}")
     tasks_done(run, 3, f"the {leader} teleported home")
     mark = len(read_log(HOST))
     cmd(lead, "walkto 80.6 13.6 8")   # into the yard: the yard's trigger switches itself off here (it crashed the host once)
-    started = False
-    for _ in range(15):
-        if "talking=True" in cmd(HOST, "dlgprobe"): started = True; break
-        time.sleep(1)
-    run.check("her talk started on the host as they came in", started)
+    run.check("her talk started on the host as they came in", until(talking, 15))
     run.check("her talk ended", finish_talk(lead))
-    time.sleep(3)
+    until(lambda: "current=Tutorial/C00_Tutorial/BabaJaga/005" in cmd(HOST, "pieces"), 6)
     p = cmd(HOST, "pieces")
     run.check("she waits inside with the next talk", "current=Tutorial/C00_Tutorial/BabaJaga/005" in p, p[:80])
-    cmd(lead, "walkto 78.3 9.5 10")
-    time.sleep(11)
+    walk(lead, 80.6, 13.6, 8)    # the talk stopped them somewhere on the way in: line up with her door first,
+    walk(lead, 78.3, 9.5, 10)    # a straight walk from elsewhere wedges into the wall beside it
+    x, _, z = pos(lead)
+    run.check(f"the {leader} is inside her house", abs(x - 78.3) < 1.6 and abs(z - 9.5) < 1.6, f"{x:.1f}, {z:.1f}")
     r = cmd(lead, "interact AtHome")
     run.check("she can be talked to inside", "interacted with Baba Jaga_AtHome" in r, r[:160])
-    time.sleep(4)
-    run.check("that talk started on the host", "talking=True" in cmd(HOST, "dlgprobe"))
+    run.check("that talk started on the host", until(talking, 8))
     run.check("that talk ended", finish_talk(lead))
-    time.sleep(4)
     tasks_done(run, 4, "she has been talked to inside")
     run.check("the host's story ran both talks", "nothing here started" not in read_log(HOST)[mark:])
     for inst in (HOST, GUEST): dismiss(inst)
     run.check("both tutorials at the same place", tutorial_at(HOST) == tutorial_at(GUEST), f"{tutorial_at(HOST)} / {tutorial_at(GUEST)}")
 
 
-SCENARIOS = {"door": ("pre-door-1.0.32", door), "yard": ("pre-door-1.0.32", yard),
+# In story order. Each starts from its own fixture when run alone; chained, each starts where the one before ended.
+SCENARIOS = {"door": ("pre-door-1.0.32", door), "yard": ("after-door-1.0.32", yard),
              "lutki": ("after-yard-1.0.32", lutki), "home": ("talisman-1.0.32", home)}
+
+
+def between_checks(run, name):
+    """After a step of a chained run: nobody left in a talk, and both copies at the same place in the tutorial."""
+    for inst in (HOST, GUEST): dismiss(inst)
+    until(lambda: not talking(HOST) and not talking(GUEST), 8)
+    run.check(f"after {name}: no dialogue left on screen", not talking(HOST) and not talking(GUEST))
+    run.check(f"after {name}: both tutorials at the same place", tutorial_at(HOST) == tutorial_at(GUEST), f"{tutorial_at(HOST)} / {tutorial_at(GUEST)}")
+
+
+def save_fixture(name):
+    """The host's world as it is now becomes local/saves/<name>; an existing one moves to local/backup, never deleted."""
+    cmd(HOST, "save")
+    time.sleep(10)
+    folder = os.path.join(GAME, HOST, "CoopSaves", SAVE_NAME, "- 1 -")
+    slot = max(os.listdir(folder), key=lambda d: os.path.getmtime(os.path.join(folder, d)))
+    dst = os.path.join(ROOT, "local", "saves", name)
+    if os.path.isdir(dst):
+        old = os.path.join(ROOT, "local", "backup", "fixtures", name + "_" + time.strftime("%Y-%m-%d_%H%M%S"))
+        os.makedirs(os.path.dirname(old), exist_ok=True)
+        shutil.move(dst, old)
+    shutil.copytree(os.path.join(folder, slot), os.path.join(dst, "- 1 -", "1"))
+    print(f"  saved the host's world as fixture {name} (from slot {slot})", flush=True)
 
 
 def main():
     args = [a for a in sys.argv[1:] if not a.startswith("--")]
     keep = "--keep" in sys.argv
-    names = [a for a in args if a in SCENARIOS] or list(SCENARIOS)
+    each = "--each" in sys.argv            # every scenario from its own fixture, instead of one chained playthrough
+    fixtures = "--fixtures" in sys.argv    # chained: save the host's world before each step as that step's fixture
+    names = [n for n in SCENARIOS if n in args]
     leaders = [a for a in args if a in ("host", "guest")] or ["host", "guest"]
+    order = list(SCENARIOS)
     runs = []
-    for name in names:
-        fixture, fn = SCENARIOS[name]
+    t0 = time.time()
+    if names or each:
+        # Isolated: the named scenarios (or all with --each), each from its own fixture.
+        for name in names or order:
+            fixture, fn = SCENARIOS[name]
+            for leader in leaders:
+                run = Run(f"{name} / {leader} leads")
+                print(f"== {run.name}", flush=True)
+                try:
+                    start(fixture)
+                    fn(run, leader)
+                    common_checks(run)
+                except (TimeoutError, SystemExit) as e:
+                    run.check("run completed", False, str(e))
+                runs.append(run)
+    else:
+        # Chained: one playthrough per leader, every scenario in story order in the same session.
         for leader in leaders:
-            run = Run(f"{name} / {leader} leads")
+            run = Run(f"playthrough ({', '.join(order)}) / {leader} leads")
             print(f"== {run.name}", flush=True)
             try:
-                start(fixture)
-                fn(run, leader)
+                start(SCENARIOS[order[0]][0])
+                for i, name in enumerate(order):
+                    print(f" -- {name}", flush=True)
+                    if fixtures and i > 0 and leader == leaders[0]: save_fixture(SCENARIOS[name][0])
+                    SCENARIOS[name][1](run, leader)
+                    if i < len(order) - 1: between_checks(run, name)
                 common_checks(run)
             except (TimeoutError, SystemExit) as e:
                 run.check("run completed", False, str(e))
             runs.append(run)
-    save = next((a.split("=", 1)[1] for a in sys.argv if a.startswith("--save=")), None)
-    if save and runs and runs[-1].passed:
-        cmd(HOST, "save")
-        time.sleep(10)
-        folder = os.path.join(GAME, HOST, "CoopSaves", SAVE_NAME, "- 1 -")
-        slot = max((d for d in os.listdir(folder)), key=lambda d: os.path.getmtime(os.path.join(folder, d)))
-        dst = os.path.join(ROOT, "local", "saves", save, "- 1 -", "1")
-        if os.path.isdir(dst): raise SystemExit(f"fixture {save} exists; not overwritten")
-        shutil.copytree(os.path.join(folder, slot), dst)
-        print(f"saved the host's world as fixture {save} (from slot {slot})")
     if not keep: stop()
     print()
     for run in runs:
         failed = [w for w, ok, _ in run.results if not ok]
         print(f"{'PASS' if run.passed else 'FAIL'}  {run.name}" + (f"  ({len(failed)} failed: {'; '.join(failed)})" if failed else ""))
+    print(f"{(time.time() - t0) / 60:.1f} min")
     sys.exit(0 if all(r.passed for r in runs) else 1)
 
 

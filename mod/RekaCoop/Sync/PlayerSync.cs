@@ -82,6 +82,7 @@ public static class PlayerSync
             Timed("story", () => StorySync.Tick(session));
             Timed("containers", () => ContainerSync.Tick(session));
             Timed("trials", () => TrialSync.Tick(session));
+            Timed("doors", () => ConditionSync.Tick(session));
             Timed("tutorial", () => TutorialSync.Tick(session));
             Timed("map", () => MapSync.Tick(session));
             Timed("saveables", () => SaveableSync.Tick(session));

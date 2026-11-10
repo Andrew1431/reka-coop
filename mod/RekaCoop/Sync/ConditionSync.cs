@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Linq;
 using HarmonyLib;
 using LiteNetLib;
 using LiteNetLib.Utils;
@@ -15,7 +16,7 @@ namespace RekaCoop.Sync;
 // so the group stays together.
 public static class ConditionSync
 {
-    private enum Kind : byte { Condition = 1, GateClose = 2, GateOpen = 3 }
+    private enum Kind : byte { Condition = 1, GateClose = 2, GateOpen = 3, Doors = 4, DoorsReady = 5 }
 
     internal static bool Replaying;
     private static CoopSession _session;
@@ -27,7 +28,84 @@ public static class ConditionSync
         session.Message += (from, type, r) => { if (type == MsgType.Condition) OnMessage(session, from, r); };
     }
 
-    public static void ResetLocal() => Last.Clear();
+    public static void ResetLocal()
+    {
+        Last.Clear();
+        _locks = null;
+        _doorsSent.Clear();
+        _doorsReadySent = false;
+    }
+
+    // Doors the story unlocks (the old woman's hut: Tutorial_BabaHutLock opens its door on a story event, which only
+    // the host's copy hears). The host's are the ones that count: open and locked go to guests when they change, and
+    // all of them to a guest who has just arrived.
+    private static Tutorial_BabaHutLock[] _locks;
+    private static readonly Dictionary<string, (bool open, bool locked)> _doorsSent = new();
+    private static bool _doorsReadySent;
+    private static float _nextDoors;
+
+    public static void Tick(CoopSession session)
+    {
+        if (!session.IsConnected || UnityEngine.Time.unscaledTime < _nextDoors) return;
+        _nextDoors = UnityEngine.Time.unscaledTime + 1f;
+        if (session.Role == Role.Client)
+        {
+            if (_doorsReadySent || !WorldSync.IsGuest) return;
+            _doorsReadySent = true;
+            var w = session.BeginMessage(MsgType.Condition);
+            w.Put((byte)Kind.DoorsReady);
+            session.Send(w, DeliveryMethod.ReliableOrdered);
+            return;
+        }
+        var changed = Doors().Where(d => !_doorsSent.TryGetValue(d.path, out var was) || was != (d.open, d.locked)).ToList();
+        if (changed.Count == 0) return;
+        bool first = _doorsSent.Count == 0;
+        foreach (var d in changed) _doorsSent[d.path] = (d.open, d.locked);
+        if (first) return;   // as loaded: a guest has that from the world, or asks
+        SendDoors(session, changed, -1);
+    }
+
+    private static List<(string path, bool open, bool locked)> Doors()
+    {
+        if (_locks == null || _locks.Any(l => l == null))
+            _locks = UnityEngine.Object.FindObjectsByType<Tutorial_BabaHutLock>(UnityEngine.FindObjectsInactive.Include, UnityEngine.FindObjectsSortMode.None).ToArray();
+        var all = new List<(string, bool, bool)>();
+        foreach (var l in _locks)
+            if (l != null && l.gate != null) all.Add((ScenePath.Of(l.gate.transform), l.gate._isOpen, l.gate.isLocked));
+        return all;
+    }
+
+    private static void SendDoors(CoopSession session, List<(string path, bool open, bool locked)> doors, int toPlayer)
+    {
+        var w = session.BeginMessage(MsgType.Condition);
+        w.Put((byte)Kind.Doors);
+        w.Put(doors.Count);
+        foreach (var d in doors) { w.Put(d.path); w.Put(d.open); w.Put(d.locked); }
+        if (toPlayer >= 0) session.SendTo(toPlayer, w, DeliveryMethod.ReliableOrdered);
+        else session.Send(w, DeliveryMethod.ReliableOrdered);
+        Plugin.Logger.LogInfo($"Conditions: sent {doors.Count} doors: {string.Join(", ", doors.Select(d => $"{d.path.Split('/').Last()} open={d.open} locked={d.locked}"))}");
+    }
+
+    private static void OnDoors(NetDataReader r)
+    {
+        int n = r.GetInt();
+        for (int i = 0; i < n; i++)
+        {
+            string path = r.GetString();
+            bool open = r.GetBool(), locked = r.GetBool();
+            var hinge = ScenePath.Resolve(path)?.GetComponent<AnimatedHingeJoint>();
+            if (hinge == null) { Plugin.Logger.LogInfo($"Conditions: no door {path} here"); continue; }
+            if (hinge._isOpen == open && hinge.isLocked == locked) continue;
+            try
+            {
+                if (hinge.isLocked && !locked) hinge.Unlock();
+                if (hinge._isOpen != open) { if (open) hinge.Open(); else hinge.Close(); }
+                if (!hinge.isLocked && locked) hinge.Lock();
+                Plugin.Logger.LogInfo($"Conditions: the host's door {path.Split('/').Last()} is open={open} locked={locked}; set here");
+            }
+            catch (System.Exception e) { Plugin.Logger.LogWarning($"Conditions: door {path} failed: {e.Message}"); }
+        }
+    }
 
     internal static void LocalSet(GenericPOICondition c, bool value)
     {
@@ -125,6 +203,8 @@ public static class ConditionSync
     private static void OnMessage(CoopSession session, RemotePlayer from, NetDataReader r)
     {
         var kind = (Kind)r.GetByte();
+        if (kind == Kind.DoorsReady) { if (session.Role == Role.Host && from != null) SendDoors(session, Doors(), from.PlayerId); return; }
+        if (kind == Kind.Doors) { if (session.Role == Role.Client) OnDoors(r); return; }
         if (kind != Kind.Condition) { OnGate(session, r, kind); return; }
         var path = r.GetString();
         bool value = r.GetBool();

@@ -67,8 +67,8 @@ proved on the tutorial beat that first needs it, not a plan per scene:
 - [ ] The test saves were made with input off, so the lantern step's on-screen prompt (CTRL) was never satisfied. Has
       blocked nothing through beat 8; complete it properly in the fixtures before beat 9 (lantern reveal).
 - [ ] Pickups can be taken twice when two players take the same one within a second (5 wood from 4 planks). Part of M1.
-- [ ] Regression speed: one continuous playthrough per leader instead of a start per scenario, waits on conditions
-      instead of fixed sleeps, digest on demand. Then, with the user's go-ahead, runs on Olga's PC over SSH.
+- [x] Regression speed: one continuous playthrough per leader, waits on conditions (done: 55 min to 15 for beats 1 to 8,
+      both leaders). Scenarios still run alone from their own fixtures. Later, with the user's go-ahead: Olga's PC over SSH.
 
 Order: tutorial beats 5 to 20 in sequence with a regression scenario each (that covers M1, M5 to M9), then one
 generated quest of each task family on the first map (M2 to M4, M10), then phase 4 removals, then phase 5.
@@ -97,3 +97,11 @@ generated quest of each task family on the first map (M2 to M4, M10), then phase
   hook from a crash offset), `backport port`. Regression: scenarios `lutki` and `home`, fixtures `after-yard`,
   `talisman`, `pine` (local/saves), `--save=NAME`, and a locked log now stops the run instead of reading a stale one.
   Survey of all story machinery by type in `research/story-survey.md`; the checklist above comes from it.
+- 2026-11-10 **Doors the story unlocks, and the chained regression.** Protocol 59. `ConditionSync`: the old woman's hut
+  doors (`Tutorial_BabaHutLock`) open on a story event only the host hears, so a guest stood at a locked door and
+  "talked to her inside" from 4 m through it; the host's open/locked now go to guests on change and on arrival. Found
+  by the user watching a test window. `mod/regress.py`: the default is one chained playthrough per leader (door, yard,
+  lutki, home in one session, checks between steps); a named scenario still runs alone from its fixture; `--each`,
+  `--fixtures` (saves the host's world before each step as that step's fixture); `until()`/`walk()` wait on conditions;
+  `home` checks the leader is inside the house. Dev commands no longer throw when `cmd.request` is still being written.
+  Design for talks as one session per copy in `research/dialogue-one-session.md` (not started; eight probes first).
