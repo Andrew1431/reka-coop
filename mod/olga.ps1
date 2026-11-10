@@ -4,9 +4,13 @@
 #   olga.ps1 status            is a run going, and the end of its output
 #   olga.ps1 wait              waits for the run to end, prints its output; exit code 0 if every check passed
 #   olga.ps1 stop              stops the run and the test games there now, and keeps tests off until 'allow'
-#   olga.ps1 allow             tests may run there again
+#   olga.ps1 end               ends the run and closes the test games there, without pausing (before a deploy)
+#   olga.ps1 allow            tests may run there again
 #   olga.ps1 sync              after a game patch: relinks the test copies there to that PC's Steam install
 #   olga.ps1 setup             one-time: the launcher task and the desktop shortcuts
+#   olga.ps1 run --start=<fixture>   both games up in that fixture and left running, to drive by hand:
+#   olga.ps1 cmd <play|client> <dev command>     runs it there and prints its result
+#   olga.ps1 log <play|client> <regex> [lines]   that copy's log lines matching the regex, newest last
 #   olga.ps1 ssh <command>     any PowerShell command there
 # Whoever sits at that PC has the same switch: "Reka tests - STOP" and "Reka tests - allow" on the desktop.
 param([Parameter(Mandatory, Position = 0)][string]$Verb, [Parameter(ValueFromRemainingArguments)][string[]]$Rest)
@@ -27,7 +31,8 @@ switch ($Verb) {
         Remote "New-Item -ItemType Directory -Force $Root\mod\remote, $Root\local\saves | Out-Null"
         Push (Get-ChildItem (Join-Path $repo 'mod\*.ps1'), (Join-Path $repo 'mod\regress.py') | ForEach-Object FullName) "$Root\mod\"
         Push (Join-Path $repo 'mod\remote\test') "$Root\mod\remote\"
-        Push (Get-ChildItem (Join-Path $repo 'local\saves') -Directory | ForEach-Object FullName) "$Root\local\saves\"
+        # Fixtures only from a checkout that has them (a worktree has no local\).
+        if (Test-Path (Join-Path $repo 'local\saves')) { Push (Get-ChildItem (Join-Path $repo 'local\saves') -Directory | ForEach-Object FullName) "$Root\local\saves\" }
         $bin = Join-Path $repo 'mod\RekaCoop\bin\Release\net6.0'
         foreach ($inst in 'play', 'client') {
             Push ("$bin\RekaCoop.dll", "$bin\RekaCoop.pdb", "$bin\LiteNetLib.dll") "$Root\game\$inst\BepInEx\plugins\RekaCoop\"
@@ -50,9 +55,17 @@ switch ($Verb) {
         if ($r -ne '0') { exit 1 }
     }
     'stop' { Script 'stop-tests.ps1'; Write-Host "stopped and paused on $target" }
+    'end' { Script 'stop-tests.ps1' '-Once'; Write-Host "run and games ended on $target (tests still allowed)" }
     'allow' { Script 'allow-tests.ps1'; Write-Host "tests allowed on $target" }
     'sync' { Remote "powershell -NoProfile -ExecutionPolicy Bypass -Command `"& '$Root\mod\sync-game.ps1' -Instances play,client`"" }
     'setup' { Script 'setup.ps1' }
+    { $_ -in 'cmd', 'log' } {
+        # cmd <play|client> <dev command>: its result. log <play|client> <regex> [lines]: matching log lines, newest last.
+        $text = if ($Verb -eq 'cmd') { $Rest[1..($Rest.Count - 1)] -join ' ' } else { $Rest[1] }
+        $b64 = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($text))
+        $more = if ($Verb -eq 'log' -and $Rest.Count -gt 2) { $Rest[2] } else { '' }
+        Remote "& `$env:LOCALAPPDATA\Programs\Python\Python312\python.exe $Root\mod\remote\test\cmd.py $Verb $($Rest[0]) $b64 $more"
+    }
     'ssh' { Remote ($Rest -join ' ') }
     default { throw "unknown verb $Verb" }
 }

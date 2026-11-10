@@ -428,6 +428,11 @@ def main():
     keep = "--keep" in sys.argv
     each = "--each" in sys.argv            # every scenario from its own fixture, instead of one chained playthrough
     fixtures = "--fixtures" in sys.argv    # chained: save the host's world before each step as that step's fixture
+    only = next((a.split("=", 1)[1] for a in sys.argv if a.startswith("--start=")), None)
+    if only:  # --start=<fixture>: both games up in that fixture and left running, for driving by hand (dev commands)
+        start(only)
+        print(f"started in {only}", flush=True)
+        return
     names = [n for n in SCENARIOS if n in args]
     leaders = [a for a in args if a in ("host", "guest")] or ["host", "guest"]
     order = list(SCENARIOS)
