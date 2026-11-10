@@ -967,9 +967,11 @@ internal static class Commands
                     try { ev = pr.GetValue(obj) as UnityEngine.Events.UnityEventBase; } catch { continue; }
                     if (ev == null) continue;
                     for (int i = 0; i < ev.GetPersistentEventCount(); i++)
-                        if ((ev.GetPersistentMethodName(i) ?? "").Contains(a[1]))
+                        if (a[1] == "*" || (ev.GetPersistentMethodName(i) ?? "").Contains(a[1]))
                         {
                             var t = ev.GetPersistentTarget(i);
+                            // optional third word: only calls whose target's or owner's name contains it
+                            if (a.Length > 2 && !(t != null && t.name.Contains(a[2])) && !c.name.Contains(a[2])) continue;
                             sb.Append($"\n{Sync.ScenePath.Of(c.transform)} {c.GetIl2CppType().Name}.{pr.Name} -> {(t != null ? t.GetIl2CppType().Name + "(" + t.name + ")" : "null")}.{ev.GetPersistentMethodName(i)}");
                         }
                 }
@@ -1209,6 +1211,53 @@ internal static class Commands
             _circleFrom = Time.unscaledTime;
             _circleUntil = Time.unscaledTime + (a.Length > 1 ? F(a[1]) : 20f);
             return "walking a circle";
+        }
+        if (a[0] == "useitem")
+        {
+            // useitem [area part]: use-an-item areas nearby (the ritual's rings, swept with the pine branch) and their spots.
+            // useitem <area part> at <n>: stand at spot n. useitem press | release: hold / let go of the held tool's
+            // button, as the mouse would. (Equip the tool first: equip <n>.)
+            var body = UnityEngine.Object.FindFirstObjectByType<PlayerMovement_2021>();
+            var me = body.transform.position;
+            if (a.Length > 1 && (a[1] == "press" || a[1] == "release"))
+            {
+                var tool = UseItemManager.Instance?.currentItem;
+                if (tool == null) return "holding nothing";
+                // The tools read the mouse themselves; this is what a held button makes them do each tick.
+                if (a[1] == "release") { tool.StopAreaInteract(); return $"release {tool.ID}"; }
+                var spot = UnityEngine.Object.FindObjectsByType<UseItemInteract>(FindObjectsSortMode.None)
+                    .Where(u => u.interactItem == tool.Type && !u.solved).OrderBy(u => (u.transform.position - me).sqrMagnitude).FirstOrDefault();
+                if (spot == null) return $"nothing here to use {tool.ID} on";
+                tool.AreaInteract(spot.interactionType, 2f, 0.75f);
+                return $"press {tool.ID} ({spot.interactionType}), nearest spot {(spot.transform.position - me).magnitude:0.0} m";
+            }
+            var areas = UnityEngine.Object.FindObjectsByType<UseItemInteractArea>(FindObjectsSortMode.None)
+                .Where(x => a.Length < 2 || Sync.ScenePath.Of(x.transform).Contains(a[1]))
+                .OrderBy(x => (x.transform.position - me).sqrMagnitude).ToList();
+            string Show(UseItemInteractArea x)
+            {
+                var spots = new List<string>();
+                foreach (var u in x.interacts) spots.Add(u == null ? "?" : (u.solved ? "x" : u.wasInteractedWith ? "w" : ".") + (u.gameObject.activeInHierarchy ? "" : "(off)") + (u.TryCast<UseItemInteract_OverTime>() is { } o ? $"{o.timeInteractedSoFar:0.0}/{o.timeToInteract:0.0}" : ""));
+                return $"{(x.transform.position - me).magnitude:0}m {Sync.ScenePath.Of(x.transform)} solved={x.allWereSolved} [{string.Join(" ", spots)}]";
+            }
+            if (a.Length > 3 && a[2] == "solve")
+            {
+                // useitem <area part> solve <n>: what the host does for a guest who finished spot n (see UseItemSync)
+                if (areas.Count == 0) return "no such area";
+                Sync.UseItemSync.SolveFor(areas[0].interacts[int.Parse(a[3])], -1);
+                return Show(areas[0]);
+            }
+            if (a.Length > 3 && a[2] == "at")
+            {
+                if (areas.Count == 0) return "no such area";
+                var u = areas[0].interacts[int.Parse(a[3])];
+                var to = u.transform.position + Vector3.up * 0.3f;
+                var rb = body.GetComponent<Rigidbody>();
+                if (rb != null) { rb.position = to; rb.linearVelocity = Vector3.zero; }
+                body.transform.position = to;
+                return $"at spot {a[3]} {to}: {Show(areas[0])}";
+            }
+            return string.Join("\n", areas.Take(6).Select(Show));
         }
         if (a[0] == "drop")
         {

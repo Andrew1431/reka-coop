@@ -271,6 +271,15 @@ public static class CarrySync
         return false;
     }
 
+    internal static CarriableObject Mine => _mine;
+
+    internal static CarriableObject CarriedByAGuest()
+    {
+        foreach (var (key, c) in Remotes)
+            if ((c.Co ?? Lookup(key)) is CarriableObject co) return co;
+        return null;
+    }
+
     // Someone else has it: don't let the local player take it out of their arms.
     internal static bool CarriedByOther(CarriableObject co) => KeyOf(co) is string k && Remotes.ContainsKey(k);
 
@@ -344,6 +353,7 @@ public static class CarrySync
             {
                 Remotes[k] = c = new Remote { Player = player };
                 Plugin.Logger.LogInfo($"Carry: player {player} picked up {k}");
+                CarryStory.GuestPicked(Lookup(k), player);
             }
             c.Player = player;
             c.LocalPos = pos;
@@ -364,6 +374,7 @@ public static class CarrySync
                 co.rb.isKinematic = true;
                 Follows[k] = new Follow { Co = co, WasKinematic = wasKinematic, Pos = pos, Rot = rot, Until = Time.unscaledTime + RollFor + 5f };
             }
+            CarryStory.GuestDropped(co, player, pos, CarriedByAGuest());
         }
         else if (kind == Kind.Roll)
         {
@@ -423,6 +434,7 @@ internal static class CarryHooks
     {
         if (CarrySync.CarriedByOther(__instance)) return false;
         MirrorSync.Release(__instance.ai);  // a mirrored hare gets its own AI back before the game carries it
+        CarryStory.LocalLifting(__instance);
         return true;
     }
 

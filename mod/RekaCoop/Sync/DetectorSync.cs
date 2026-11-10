@@ -103,12 +103,17 @@ internal static class DetectorSync
         return string.Join(",", System.Linq.Enumerable.Select(PlayerSync.PuppetPositions(), p => { try { return $"{p.Item1}:{d.ContainsPoint(p.Item2 + head)}/{d.ContainsPoint(p.Item2)}"; } catch { return "?"; } }));
     }
 
-    // Host: a guest walked into a detector that was off here (now switched on for them).
+    // Host: this detector is on here, but whether the speaker can see the one who walked in was judged on that guest's
+    // copy, with its real player; here the test runs against a puppet and doesn't pass.
+    internal static bool NeedsWord(ObjectDetector d) =>
+        d != null && d.doLOSCheck && !d._losEnteredThisStay && !(d.triggerOnlyOnce && d.onEnterHasBeenTriggered);
+
+    // Host: a guest walked into a detector that was off here (now switched on for them), or one that wants a line of sight.
     internal static void EnterFor(ObjectDetector d, int player)
     {
         if (d == null || d.triggerOnlyOnce && d.onEnterHasBeenTriggered) return;
         _tickFor = player;
-        try { d.OnEntered(); }
+        try { d.OnEntered(); if (d.doLOSCheck) d._losEnteredThisStay = true; }
         catch (System.Exception e) { Plugin.Logger.LogWarning($"Detectors: entering {d.name} for {NameTags.NameOf(player)} failed: {e.Message}"); }
         finally { _tickFor = -1; }
     }

@@ -21,6 +21,7 @@ public static class Intents
         AreaExit = 6,     // walked out of one
         TutorialSolve = 7, // did what the current tutorial task asks for: int block, int task, string id; see TutorialSync
         TrackerEvent = 8, // the trial tracker heard a story event on the guest's copy: byte handler, int step; see TrialSync
+        UseItem = 9,      // finished a spot with a tool: int index in the area at the path, -1 for the spot itself; see UseItemSync
     }
 
     // Kind.Call: what the guest's copy was about to run. These go once the host's copy sees guests as players and a
@@ -58,7 +59,7 @@ public static class Intents
         var kind = (Kind)r.GetByte();
         string path = r.GetString();
         var entry = kind == Kind.Call ? (Entry)r.GetByte() : Entry.None;
-        var t = kind is Kind.AreaEnter or Kind.AreaExit or Kind.TutorialSolve or Kind.TrackerEvent ? ScenePath.Resolve(path) : DialogueSync.Admit(from.PlayerId, kind, Name(kind, entry), path);
+        var t = kind is Kind.AreaEnter or Kind.AreaExit or Kind.TutorialSolve or Kind.TrackerEvent or Kind.UseItem ? ScenePath.Resolve(path) : DialogueSync.Admit(from.PlayerId, kind, Name(kind, entry), path);
         if (t == null) return;
         Actor = from.PlayerId;
         bool acting = ActingPlayer.Enter(Actor);
@@ -75,6 +76,7 @@ public static class Intents
             case Kind.DefaultTalk: DialogueSync.DeferDefault(t, r); break;
             case Kind.AreaEnter: AreaSync.Run(t, Actor, true); break;
             case Kind.AreaExit: AreaSync.Run(t, Actor, false); break;
+            case Kind.UseItem: UseItemSync.Run(t, r.GetInt(), Actor); break;
             case Kind.TrackerEvent: TrialSync.EventFor(Actor, r.GetByte(), r.GetInt()); break;
             case Kind.TutorialSolve: TutorialSync.SolveFor(Actor, r.GetInt(), r.GetInt(), r.GetString()); break;
             case Kind.Call:

@@ -673,8 +673,9 @@ public static class DialogueSync
         var t = ScenePath.Resolve(path);
         if (t == null) { Plugin.Logger.LogWarning($"Dialogue: {NameTags.NameOf(player)} asked for {what} at {path}, not found here"); return null; }
         // A detector that is on here sees the guest already (DetectorSync); only one the guest's own copy switched on
-        // (picking up the ritual egg switches on the oven's) needs the guest's word for it.
-        if (kind == Intents.Kind.Enter && t.gameObject.activeInHierarchy) return null;
+        // (picking up the ritual egg switches on the oven's) needs the guest's word for it, or one that also wants a
+        // line of sight, which the host's copy can't judge for a puppet.
+        if (kind == Intents.Kind.Enter && t.gameObject.activeInHierarchy && !DetectorSync.NeedsWord(t.GetComponent<ObjectDetector>())) return null;
         // Off here: the guest's own state switched it on (the wheel in their arms shows the "found it" talk, which
         // the host's copy only shows while the host carries it), so it's switched on here too. A once-only scene
         // that has already run stays off.

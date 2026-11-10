@@ -26,6 +26,8 @@ internal static class AreaSync
         "TriggerWarningHelper", "RegisterLocationOnCompass", "POISoundTriggerer", "StudioEventEmitter", "PoiQuestInterface",
     };
 
+    internal static bool IsLocalTarget(string typeName) => LocalTargets.Contains(typeName);
+
     private sealed class Info
     {
         public PlayerTrigger Trigger;

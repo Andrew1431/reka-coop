@@ -3,7 +3,7 @@ namespace RekaCoop.Net;
 // Wire format: [byte MsgType][body]. Bump Version on any change to a message layout.
 public static class Protocol
 {
-    public const int Version = 60;
+    public const int Version = 61;
     public const string ConnectKey = "reka-coop";
     public const int DefaultPort = 27877;
 }
