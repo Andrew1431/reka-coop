@@ -34,6 +34,8 @@ public static class DialogueSync
         Skip = 12,                                     // the starter showed the rest of a line at once (line gen, index)
         Hover = 13,                                    // the option the starter has highlighted
         Passive = 14,                                  // host -> guests: a passive line (a monologue) shown here
+        Start = 15,                                    // host -> guests: a whole dialogue (every line of one generation), run as one session
+        Index = 16,                                    // host -> guests: the line that dialogue is at now
     }
 
     // The conversation as the host has it. Guests check theirs against it every second, so a lost or late message
@@ -76,6 +78,14 @@ public static class DialogueSync
     // (the host keeps the real one for the starter's continue).
     internal static void OnWaitingForContinue(DialogueUILogic ui, ref Il2CppSystem.Action action)
     {
+        if (_one is { } o && CoopDriver.Session?.Role == Role.Client && ui.DialogueGeneration == o.LocalGen)
+        {
+            if (action != null && o.StandIn != null && action.Pointer == o.StandIn.Pointer) return;   // our own, waiting again
+            o.Held = action;
+            o.HeldFor = (o.LocalGen, ui.indexInDialogue);
+            action = _leadingTalk ? o.StandIn = StandInFor(o, ui.indexInDialogue) : Nothing;
+            return;
+        }
         if (CoopDriver.Session?.Role != Role.Client)
         {
             _waiting = action;
@@ -85,6 +95,156 @@ public static class DialogueSync
     }
 
     private static readonly Il2CppSystem.Action Nothing = (System.Action)(() => { });
+
+    // One session: a story talk (one dialogue on the host, nothing after it) is sent whole when it starts, and every
+    // other copy runs it as one dialogue of its own: the box stays up from line to line and the camera keeps its
+    // session. Only the line number is synced after that. Talks that go on to options or another dialogue, passive
+    // lines and anyone who joins mid-talk still get it line by line (Kind.Line, FollowNow).
+    internal static bool OneSession = true;   // dev: off sends every talk line by line
+    private static int _oneGen = -1, _pathGen = -1;   // host: the generation sent whole; the one a path was chosen for
+    private static bool _talkFallback;                // host: this talk has gone line by line, and stays so
+
+    private static bool HasBranch(DialogueUILogic ui)
+    {
+        try { return ui.pendingAfterDialogue.HasValue; }
+        catch (System.NullReferenceException) { return false; }   // no value boxes to null
+    }
+
+    private static void ChoosePath(DialogueUILogic ui, int gen)
+    {
+        if (!_talking) _talkFallback = false;
+        string why = !OneSession ? "one session is switched off" : _talkFallback ? "this talk already runs line by line"
+            : HasBranch(ui) ? "it goes on to options or another dialogue" : DialogueOptionsPanel.IsShowing ? "options are open" : null;
+        _oneGen = why == null ? gen : -1;
+        if (why != null) _talkFallback = true;
+        Plugin.Logger.LogInfo(why == null ? $"Dialogue: one session, generation {gen}, {ui.currentDialogue.Length} lines"
+            : $"Dialogue: line by line, generation {gen} ({why})");
+    }
+
+    private static void SendSession(CoopSession session, DialogueUILogic ui, int gen, int index, bool start)
+    {
+        var w = session.BeginMessage(MsgType.Dialogue);
+        if (!start)
+        {
+            w.Put((byte)Kind.Index);
+            w.Put(gen);
+            w.Put(index);
+            session.Send(w, DeliveryMethod.ReliableOrdered);
+            return;
+        }
+        w.Put((byte)Kind.Start);
+        w.Put(_leader);
+        w.Put(gen);
+        w.Put(index);
+        int n = ui.currentDialogue.Length;
+        w.Put(n);
+        for (int i = 0; i < n; i++)
+        {
+            w.Put(At(ui.currentDialogue, i));
+            w.Put(At(ui.namesOfPersonTalking, i));
+            w.Put(At(ui.titlesOfPersonTalking, i));
+            w.Put(At(ui.emotionsOfLines, i));
+        }
+        session.Send(w, DeliveryMethod.ReliableOrdered);
+    }
+
+    // Guest: the host's dialogue as it runs here.
+    private sealed class One
+    {
+        public int TalkId, From, LocalGen = -1, HostIndex, Starts;
+        public (string text, string name, string title, string emotion)[] Lines;
+        public Il2CppSystem.Action Held, StandIn;   // what the box would run on continue; what it was given instead
+        public (int gen, int index) HeldFor;
+        public float StartedAt;
+        public readonly List<Il2CppSystem.Action> Keep = new();
+    }
+
+    private static One _one;
+    internal static bool InOneSession => _one != null;
+
+    private static void StartOne(int from)
+    {
+        var ui = DialogueUILogic.Instance;
+        var o = _one;
+        if (ui == null || o == null) return;
+        CloseLine();
+        o.From = from;
+        o.Held = o.StandIn = null;
+        o.StartedAt = Time.unscaledTime;
+        o.Starts++;
+        int n = o.Lines.Length - from;
+        if (n <= 0) return;
+        // The camera takes a speaker only for a dialogue starting in the same frame.
+        if (_pulledIn && _camera != null && _speakerHead != null) _camera.Activate(_speakerHead, _speaker);
+        Il2CppStringArray Col(System.Func<(string text, string name, string title, string emotion), string> f)
+        {
+            var a = new string[n];
+            for (int i = 0; i < n; i++) a[i] = f(o.Lines[from + i]) ?? "";
+            return new Il2CppStringArray(a);
+        }
+        ui.RequestStartDialogue(Col(l => l.text), Col(l => l.name), Col(l => l.title), null, new Il2CppSystem.Nullable<DialogueBranch>(),
+            false, false, Col(l => l.emotion), null);
+        o.LocalGen = ui.DialogueGeneration;
+        if (!ui.IsTalking || ui.currentDialogue == null || ui.currentDialogue.Length != n)
+            Plugin.Logger.LogWarning($"Dialogue: one session {o.TalkId}: the box didn't take it (talking={ui.IsTalking}, lines={ui.currentDialogue?.Length}); trying again");
+    }
+
+    // Guest, every frame: move the box on to the host's line by running what its own continue would run.
+    private static void TickOne()
+    {
+        var o = _one;
+        var ui = DialogueUILogic.Instance;
+        if (o == null || ui == null) return;
+        if (!ui.IsTalking || ui.DialogueGeneration != o.LocalGen || ui.currentDialogueIsPassive)
+        {
+            if (Time.unscaledTime - o.StartedAt < 0.5f || o.HostIndex >= o.Lines.Length) return;
+            Plugin.Logger.LogWarning($"Dialogue: one session {o.TalkId}: the box closed here (start {o.Starts}); starting again at line {o.HostIndex}");
+            StartOne(o.HostIndex);
+            return;
+        }
+        int local = ui.indexInDialogue;
+        _hostLine = (o.TalkId, o.From + local);
+        if (o.From + local >= o.HostIndex) return;
+        if (o.Held != null && o.HeldFor == (o.LocalGen, local))
+        {
+            var go = o.Held;
+            o.Held = null;
+            go.Invoke();   // mid-talk this is the box's own next line
+        }
+        else if (ui.talker != null && ui.talker.IsRevealing)
+        {
+            _applyingSkip = true;
+            try { ui.talker.typewriter?.SkipTypewriter(); }
+            finally { _applyingSkip = false; }
+        }
+    }
+
+    // Guest starter: its continue asks the host for the next line, and waits again: a line nobody waits on closes
+    // itself within a few frames, and the host's answer takes longer. Waits left over from earlier lines get the same
+    // press (the game doesn't stop them): each knows its line and does nothing once the box has moved on.
+    private static Il2CppSystem.Action StandInFor(One o, int index)
+    {
+        int gen = o.LocalGen;
+        Il2CppSystem.Action standIn = null;
+        standIn = (System.Action)(() =>
+        {
+            var ui = DialogueUILogic.Instance;
+            if (ui == null || _one != o || o.StandIn == null || o.StandIn.Pointer != standIn.Pointer) return;
+            if (!ui.IsTalking || ui.DialogueGeneration != gen || ui.indexInDialogue != index) return;
+            var session = CoopDriver.Session;
+            if (_leadingTalk && session != null && session.IsConnected)
+            {
+                var w = session.BeginMessage(MsgType.Dialogue);
+                w.Put((byte)Kind.Next);
+                w.Put(o.TalkId);
+                w.Put(o.From + index);
+                session.Send(w, DeliveryMethod.ReliableOrdered);
+            }
+            ui.StartCoroutine(ui.WaitForPlayerInputThenDoSth(standIn));
+        });
+        o.Keep.Add(standIn);
+        return standIn;
+    }
 
     // The starter skipped the typing: everyone else's line shows in full.
     private static bool _applyingSkip;
@@ -175,6 +335,13 @@ public static class DialogueSync
             else if (session.Role == Role.Host) OnRequest(session, from, r);
         };
         session.PlayerLeft += id => { if (_leader == id) _leader = 0; };
+        session.PlayerJoined += id =>
+        {
+            if (session.Role != Role.Host || !_talking || _oneGen < 0) return;
+            _oneGen = -1;
+            _talkFallback = true;
+            Plugin.Logger.LogInfo($"Dialogue: {NameTags.NameOf(id)} joined mid-talk; the rest of it goes line by line");
+        };
     }
 
     internal static int Me => CoopDriver.Session?.LocalPlayerId ?? 0;
@@ -182,7 +349,7 @@ public static class DialogueSync
     public static void Tick(CoopSession session)
     {
         if (session.Role == Role.Client && Time.unscaledTime < _strayUntil) CloseStrayLine();
-        if (session.Role == Role.Client) { ShowAfterTalkNow(); ShowPending(); WatchLeaving(session); TalkCamera.Tick(session); ApplySkip(); TickHover(session); return; }
+        if (session.Role == Role.Client) { ShowAfterTalkNow(); ShowPending(); TickOne(); WatchLeaving(session); TalkCamera.Tick(session); ApplySkip(); TickHover(session); return; }
         if (session.Role != Role.Host || !session.IsConnected) return;
         var ui = DialogueUILogic.Instance;
         if (ui == null) return;
@@ -207,7 +374,10 @@ public static class DialogueSync
             _lastGeneration = gen;
             _lastIndex = index;
             if (index < 0 || index >= ui.currentDialogue.Length) return;
+            bool start = _pathGen != gen;
+            if (start) { _pathGen = gen; ChoosePath(ui, gen); }
             Begin(session);
+            if (_oneGen == gen) { SendSession(session, ui, gen, index, start); return; }
             var w = session.BeginMessage(MsgType.Dialogue);
             w.Put((byte)Kind.Line);
             w.Put(_leader);
@@ -223,6 +393,7 @@ public static class DialogueSync
             if (_quietSince < 0) _quietSince = Time.unscaledTime;
             if (Time.unscaledTime - _quietSince < 0.5f) return;
             _talking = false;
+            _oneGen = -1;
             _lastIndex = -1;
             _lastLeader = (_leader, Time.unscaledTime);
             _leader = -1;
@@ -598,8 +769,31 @@ public static class DialogueSync
                 Plugin.Logger.LogInfo($"Dialogue: passive {name}: {text}");
                 break;
             }
+            case Kind.Start:
+            {
+                int leader = r.GetInt(), talkId = r.GetInt(), from = r.GetInt();
+                var lines = new (string, string, string, string)[r.GetInt()];
+                for (int i = 0; i < lines.Length; i++) lines[i] = (r.GetString(), r.GetString(), r.GetString(), r.GetString());
+                _leadingTalk = leader == session.LocalPlayerId;
+                ClosePanel();
+                _pending = null;
+                _following = true;
+                _hostLine = (talkId, from);
+                _one = new One { TalkId = talkId, Lines = lines, HostIndex = from };
+                Plugin.Logger.LogInfo($"Dialogue: one session {talkId}: {lines.Length} lines from {from}, {(_leadingTalk ? "leading" : "watching")}, {(_pulledIn ? "camera on " + _speaker : "no camera")}");
+                StartOne(from);
+                break;
+            }
+            case Kind.Index:
+            {
+                int talkId = r.GetInt(), index = r.GetInt();
+                if (_one == null || _one.TalkId != talkId) break;
+                if (index > _one.HostIndex) _one.HostIndex = index;
+                break;
+            }
             case Kind.Line:
             {
+                if (_one != null) { Plugin.Logger.LogInfo($"Dialogue: one session {_one.TalkId} goes on line by line"); _one = null; }
                 _leadingTalk = r.GetInt() == session.LocalPlayerId;
                 _hostLine = (r.GetInt(), r.GetInt());
                 string name = r.GetString(), title = r.GetString(), text = r.GetString();
@@ -686,6 +880,7 @@ public static class DialogueSync
         }
         _idleSince = -1;
         _leadingTalk = leader == session.LocalPlayerId;
+        if (_one != null && phase == Phase.Line && line.Item1 == _one.TalkId && line.Item2 > _one.HostIndex) _one.HostIndex = line.Item2;  // a lost Index
         // Our panel closed (or never opened) while the host still waits for our choice.
         if (phase == Phase.Options && leader == session.LocalPlayerId && !_leading && !DialogueOptionsPanel.IsShowing && _lastOptions != null
             && Time.unscaledTime - _pickedAt > 2f)
@@ -713,6 +908,7 @@ public static class DialogueSync
         var panel = Panel();
         if (panel == null) return;
         _pending = null;
+        _one = null;
         CloseLine();  // the panel sits where the line was
         var ls = new Il2CppSystem.Collections.Generic.List<string>();
         var callbacks = new Il2CppSystem.Collections.Generic.List<Il2CppSystem.Action>();
@@ -859,6 +1055,7 @@ public static class DialogueSync
     private static void StopFollowing()
     {
         _pending = null;
+        _one = null;
         _following = false;
         _leadingTalk = false;
         LetGo();
@@ -918,7 +1115,7 @@ public static class DialogueSync
     }
 
     public static string Describe() =>
-        $"leader={_leader} talking={_talking} requestedBy={_requestedBy} following={_following} leading={_leading} pulledIn={_pulledIn} leadingTalk={_leadingTalk} camera: {TalkCamera.Describe()} offered={(_offered == null ? "" : string.Join(" | ", _offered))}";
+        $"leader={_leader} talking={_talking} requestedBy={_requestedBy} following={_following} leading={_leading} pulledIn={_pulledIn} leadingTalk={_leadingTalk} one={(_one == null ? "no" : $"{_one.TalkId}@{_one.HostIndex}/{_one.Lines.Length} from {_one.From} starts {_one.Starts}")} oneGen={_oneGen} camera: {TalkCamera.Describe()} offered={(_offered == null ? "" : string.Join(" | ", _offered))}";
 
     public static void LateTick() => TalkCamera.LateTick();
 

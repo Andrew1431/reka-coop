@@ -11,6 +11,7 @@ namespace RekaCoop.Dev;
 
 // Measurement for research/dialogue-one-session.md (section 5). Nothing here runs unless a dev command switches it on:
 //   dlgtrace on|off        log the dialogue box and the dialogue camera whenever either changes (one line per change)
+//   dlgone on|off          host: story talks go to the other copies whole (one session) or line by line
 //   dlgstate               both, once, with the game's constants
 //   dlghold on|off         keep the action the box would run on continue (the next line, or the last line's end) and give
 //                          the box one that does nothing
@@ -383,6 +384,9 @@ internal static class DialogueProbe
                 _last = "";
                 if (_trace) PatchHold();
                 return $"trace {(_trace ? "on" : "off")}";
+            case "dlgone":
+                DialogueSync.OneSession = a.Length < 2 || a[1] != "off";
+                return $"one session {(DialogueSync.OneSession ? "on" : "off")} (the host decides)";
             case "dlgstate":
                 return $"f={Time.frameCount} t={Time.unscaledTime:0.00} {Ui()} | {CamState()}"
                     + $"\n  held={Describe(_held)} for {_heldFor} hold={_hold} wdAgo={Try(() => (Time.unscaledTime - ui.watchdogLastProgressUnscaled).ToString("0.0"))}s wdFrames={Try(() => (Time.frameCount - ui.watchdogLastProgressFrame).ToString())} heartbeatFrames={Try(() => (Time.frameCount - ui.lastLoopHeartbeatFrame).ToString())}"

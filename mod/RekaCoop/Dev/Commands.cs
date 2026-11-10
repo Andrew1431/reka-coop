@@ -1073,6 +1073,7 @@ internal static class Commands
         {
             // next: continue as the player would; on the host, the dialogue box's own pending step
             if (!Sync.WorldSync.IsGuest) return Sync.DialogueSync.Continue() ? "continued" : "nothing to continue";
+            if (Sync.DialogueSync.InOneSession) return DialogueProbe.Run(new[] { "dlgpress" });   // one session: the real continue button
             DialogueUILogic.Instance.QueueNextLine();
             return "next";
         }

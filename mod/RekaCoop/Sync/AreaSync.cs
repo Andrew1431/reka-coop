@@ -72,6 +72,7 @@ internal static class AreaSync
     {
         if (t == null || _depth++ > 0) return;
         _held = null;
+        _own = null;
         var session = CoopDriver.Session;
         if (session == null || !session.IsConnected) return;
         if (WorldSync.IsGuest)
@@ -84,15 +85,33 @@ internal static class AreaSync
             t.OnPlayerExit?.AddListener(DelegateSupport.ConvertDelegate<UnityAction>(new System.Action(() => Tell(info, false))));
             return;
         }
+        if (session.Role != Role.Host) return;
         // Host: while a guest is in it, the host's own coming and going changes nothing in the story.
-        if (session.Role != Role.Host || !GuestsIn(t)) return;
-        _held = Of(t);
-        Switch(_held.Story, false);
+        if (GuestsIn(t))
+        {
+            _held = Of(t);
+            Switch(_held.Story, false);
+            return;
+        }
+        _own = t;
+        _ownWasIn = t.howManyCollidersOfMineIsPlayerIn > 0;
     }
+
+    private static PlayerTrigger _own;
+    private static bool _ownWasIn;
 
     private static void End()
     {
-        if (_depth == 0 || --_depth > 0 || _held == null) return;
+        if (_depth == 0 || --_depth > 0) return;
+        // The host itself walked into a trigger with story on it: a talk that sets off is the host's to lead, not a
+        // guest's whose last walk into some detector (the Lutki wander through theirs) is still on record.
+        if (_own != null)
+        {
+            var own = _own;
+            _own = null;
+            if (!_ownWasIn && own.howManyCollidersOfMineIsPlayerIn > 0 && Of(own).Story.Count > 0) DialogueSync.NoteRequest(DialogueSync.Me, 10f);
+        }
+        if (_held == null) return;
         var info = _held;
         _held = null;
         if (info.Trigger != null) Switch(info.Story, true);

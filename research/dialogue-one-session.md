@@ -365,3 +365,72 @@ Seen on the way (not dialogue design): in the host-led run the guest crossed a L
 before the host walked into the yard; the yard talk was given to the guest (`conversation led by regress-guest`) and the
 host was moved 100 m to the Lutki (`moved beside the starter (0.3, 5.6, 109.4)`). After dev `closeoptions` on the host
 the villager's box stays up (`talk=True`) with nobody to close it.
+
+## 8. Implemented (2026-11-10): story talks as one session (stages 2 to 4, protocol 60)
+
+What runs as one session: a host dialogue that starts a talk and has nothing after it (`pendingAfterDialogue` empty,
+no options open). That is every tutorial talk with the old woman and the standalone story lines. The host logs
+`Dialogue: one session, generation N, L lines`, sends `Start` (leader, generation, current index, then text, name,
+title, emotion per line) once and `Index` (generation, index) per line after that. The speaker still comes from the
+existing `Camera` message, which the host sends at `Activate`, before `Start`.
+
+On a guest (`DialogueSync.One`, `StartOne`, `TickOne`, `StandInFor`):
+- `Start`: `Activate` (when the host's camera named a speaker) and `RequestStartDialogue` with all lines in one frame,
+  no callbacks, no branch. The guest logs `Dialogue: one session N: L lines from 0, leading|watching, camera on X`.
+- The continue prefix keeps the box's own action per line. `Index` from the host: `TickOne` runs the kept action (the
+  box's `QueueNextLine`), after finishing the typing if the line was still typing; one step per frame.
+- Watching: the box gets the do-nothing action; its presses are blocked as before, so its wait stays alive.
+- Leading: the box gets a stand-in that sends `Next(generation, index)` and starts the wait again. Stand-ins of earlier
+  lines get the same press; each checks it is the current stand-in for the line on screen and does nothing otherwise.
+- The last line stays up until the host's `End` (about 0.5 s after the starter's last continue: the host's quiet rule).
+  No branch is used, so the Nullable construction that crashed is not in the shipped path.
+- If the box is gone while the host is still in the talk, it starts again from the host's line (warning in the log).
+  `State` carries the index too, so a lost `Index` is caught up within a second.
+
+Still line by line (the old `Line` / `FollowNow` path, logged on the host as `Dialogue: line by line, generation N
+(reason)`): a dialogue with a branch (villager greeting, answers, anything that goes on to options), every later
+dialogue of such a talk including its "Goodbye", passive lines (`Passive`), and the rest of a talk after someone joins
+mid-talk (`joined mid-talk; the rest of it goes line by line`; guests that were in the session drop to lines at the
+next `Line`). Dev: `dlgone off` on the host sends everything line by line. `TalkCamera` is unchanged: a watcher still
+shows the starter's stream over its own dialogue camera, and the two did not fight.
+
+Dev `next` on a guest in a session now presses the real continue button (`dlgpress`), so the regression goes through
+the stand-in and the re-armed wait.
+
+Measured on the following copy (guest), `dlgtrace` + `campatch 2`:
+
+| Talk | | Generations | Box hidden while talking | BeginSession | Shots |
+|---|---|---|---|---|---|
+| Door, guest leads | before | 1, 3, 5, 7, 9 | 5 times | 1 | `Opening wide OTS "session start"` on all 5 lines |
+| | after | 1 | once (the start) | 1 | `Opening wide OTS`, `Reaction on Reka (Single-Medium)`, `Opening wide OTS "reaction over"` |
+| Indoors (21 lines), host leads | before | 3, 5 ... 43 | 21 | 1 | progressed already (`Opening Single-Loose`, `Single-Medium`, `Single-Close` ...) |
+| | after | 3 | once | 1 | `Opening Single-Loose`, `Single-Medium`, `Single-Close`, `Single-Medium`, `Single-Tight`, `Single-Medium`, `Single-Close`, `OTS-Medium` |
+| Indoors, guest leads | before | 3, 5 ... 43 | 21 | 2 (one release mid-talk) | `Player camera "nothing validated"`, `Opening OTS-Close "retry"`, ..., `Opening wide OTS "session start"` again mid-talk |
+| | after | 3 | once | 1 | `Player camera "nothing validated"`, `Opening OTS-Close "retry from the player camera"`, `OTS-Close`, `OTS-Medium`, `Single-Close`, `OTS-Medium`, `OTS-Close`, `Single-Tight`, `OTS-Medium` |
+
+The first-frame `nothing validated` indoors is on whichever copy's player just used her (host-led: the host; guest-led:
+the guest) and the game's own retry fixes it within a second. It is not the swap.
+
+Regression (`python mod/regress.py`, 16.1 min): guest-led playthrough PASS; host-led playthrough one failed check,
+`the host is inside her house: 30.3, 71.5`, caused by the leader bug below, not by this change (seen with the old code
+in section 7; with the guest moved away from the Lutki first, the same host-led step ran clean).
+
+### The leader bug, for a separate fix
+
+Repro: fixture `talisman-1.0.32`, both players at the Lutki. Guest stands still. Host: `tp 60 40 4`, `backport port`,
+`walkto 80.6 13.6 8`. The standing Lutki keep walking into the guest, so the host logs a detector for the guest about
+once a second, and the yard talk the host walks into is given to the guest:
+
+```
+[cmd] walkto 80.6 13.6 8 -> walking to 80.6, 13.6
+Detectors: regress-guest walked into TutorialProps_v3(Clone)[0]/FunctionalComponents[0]/POI_Tutorial_TeleportTalisman[5]/Lutki[3]/Lutki_01[1]/ObjectDetector_Player[1]
+[piece] RunDialogue Tutorial/C00_Tutorial/BabaJaga/004 wasSet=False didRun=False invalid=False immediate=True
+Dialogue: one session, generation 7, 1 lines
+Dialogue: conversation led by regress-guest
+Dialogue: moved beside the starter (3.4, 5.5, 107.2)
+walkto: stopped 120.8 m from the goal
+```
+
+Cause as read from the code: the detector calls `DialogueSync.NoteRequest(guest, hold)`; `Begin` gives the next talk to
+`_requestedBy` while the request is fresh, whatever started the talk. This talk was started by the host walking into a
+trigger (`TutorialDialoguePiece.RunDialogue`, not inside an AI update), so nothing set the host as the requester.

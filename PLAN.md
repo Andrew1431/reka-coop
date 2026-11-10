@@ -57,13 +57,12 @@ proved on the tutorial beat that first needs it, not a plan per scene:
 - [ ] M8 UseItem intent (pine branch, lantern reveal, watering, fire). Beats 9, 13.
 - [ ] M9 ritual advance entry. Beats 12 to 17.
 - [ ] M10 hand-in intent for item-giving screens. First chapter after the tutorial.
-- [ ] Talks as one session on every copy (seen by the user 2026-11-10, two symptoms, one cause). A copy that is not
-      running the talk shows each of the host's lines as a new one-line dialogue (DialogueSync.FollowNow: force-close,
-      start again). So the box blinks out and back on every line, and that copy's dialogue camera starts over with its
-      opening shot on every line (measured in the indoor talk: guest leader `shot=Opening wide OTS reason=session
-      start`, generation +2 per line). The host, which runs the real talk for a guest, validates no shot at all
-      (`Player camera ... nothing validated`) and shows the guest's camera. Wanted: the host sends the whole talk when
-      it starts, each copy runs it as one dialogue and only the line index is synced.
+- [~] Talks as one session on every copy. Done for story talks (protocol 60): the host sends a whole dialogue once
+      (`Start`) and then only the line number (`Index`); a guest runs it as one dialogue of its own, lines advanced by
+      the box's own held continue action; a leading guest's press only asks the host. Measured on the guest: box
+      hidden 21 times to 1 in the indoor talk, shots progress. Still line by line: any dialogue with a branch (villager
+      greetings and answers through the options menu), passive lines, the rest of a talk after someone joins. Design,
+      probe results and what is left (stages 5 to 8) in `research/dialogue-one-session.md`.
 - [ ] The test saves were made with input off, so the lantern step's on-screen prompt (CTRL) was never satisfied. Has
       blocked nothing through beat 8; complete it properly in the fixtures before beat 9 (lantern reveal).
 - [ ] Pickups can be taken twice when two players take the same one within a second (5 wood from 4 planks). Part of M1.
@@ -105,3 +104,8 @@ generated quest of each task family on the first map (M2 to M4, M10), then phase
   `--fixtures` (saves the host's world before each step as that step's fixture); `until()`/`walk()` wait on conditions;
   `home` checks the leader is inside the house. Dev commands no longer throw when `cmd.request` is still being written.
   Design for talks as one session per copy in `research/dialogue-one-session.md` (not started; eight probes first).
+- 2026-11-10 **Story talks as one session (protocol 60) and the talk leader.** `DialogueSync`: see the checklist item
+  above; dev probes in `Dev/DialogueProbe.cs` (`dlgtrace`, `dlgstate`, `dlgone` and others). `AreaSync`: the host
+  walking into a trigger with story on it is noted as the host's own step, so a guest's last walk into some detector
+  (the Lutki wander through theirs once a second) no longer leads the talk the host sets off and pulls the host 100 m.
+  Chained regression passes both ways (156 checks, 15.8 min).
