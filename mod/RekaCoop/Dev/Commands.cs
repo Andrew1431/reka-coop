@@ -65,6 +65,7 @@ internal static class Commands
             if (!on) _circleUntil = -1;
         }
         Trace.Tick();
+        NoInput.Tick();
         if (_walkTo is Vector3 goal)
         {
             // walkto: real movement input toward the goal, relative to the camera (the override is (forward, right))
@@ -881,6 +882,21 @@ internal static class Commands
                              (g.gate == null ? "no hinge" : $"open={g.gate._isOpen} locked={g.gate.isLocked} progress={g.gate.currentProgressInSeconds:0.00}")));
         if (a[0] == "map") { if (a.Length > 2) CompassLogic.SetHighlight(string.Join(" ", a.Skip(1).Take(a.Length - 2)), a[^1] == "1"); return Sync.MapSync.Describe(); }
         if (a[0] == "tutorial") return Sync.TutorialSync.Describe();
+        if (a[0] == "pieces") return TutorialPieceLog.Describe();
+        if (a[0] == "journal")
+        {
+            // what the journal key, a tab and the close key do
+            var jm = UnityEngine.Object.FindObjectsByType<JournalManager>(FindObjectsInactive.Include, FindObjectsSortMode.None).FirstOrDefault();
+            string what = a.Length > 1 ? a[1] : "";
+            if (what == "open") GameEvents.UI.Interactables.PeekInventory.TryToOpen?.Invoke();
+            else if (what == "openui") GameEvents.UI.Journal.OpenJournalUi?.Invoke();
+            else if (what == "closeui" && jm != null) jm.CloseJournal();
+            else if (what == "close") GameEvents.UI.Journal.CloseJournalUi?.Invoke();
+            else if (what == "page" && jm != null) jm.JumpToPage(System.Enum.Parse<JournalPage>(a[2]));
+            else if (what == "next" && jm != null) jm.OnRequest_NextTab();
+            return $"journal {what}: manager {(jm == null ? "none" : jm.isActiveAndEnabled ? "on" : "off")}";
+        }
+        if (a[0] == "areas") { float rr = a.Length > 1 ? F(a[1]) : 15f; var me = Sync.PlayerSync.LocalFeet ?? Vector3.zero; return string.Join("\n", UnityEngine.Object.FindObjectsByType<PlayerTrigger>(FindObjectsInactive.Include, FindObjectsSortMode.None).Where(t => (t.transform.position - me).magnitude <= rr).Select(t => $"{(t.transform.position - me).magnitude:0}m {(t.isActiveAndEnabled ? "+" : "-")} {Sync.ScenePath.Of(t.transform)} {Sync.AreaSync.Describe(t)}")); }
         if (a[0] == "skiptask") { UnityEngine.Object.FindFirstObjectByType<TasksTracker>().SkipNextTask(); return Sync.TrialSync.Describe(); }
         if (a[0] == "skiptrial") { UnityEngine.Object.FindFirstObjectByType<TasksTracker>().SkipCurrentTrial(); return Sync.TrialSync.Describe(); }
         if (a[0] == "chests")

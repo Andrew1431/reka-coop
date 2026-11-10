@@ -93,7 +93,18 @@ public static class ActiveSync
             var (t, key) = _pending.Pop();
             if (t == null) continue;
             _building.Add(new Node { Key = key, Go = t.gameObject, On = t.gameObject.activeSelf });
-            if (Skip(t)) continue;  // a character: shown or hidden as a whole, its insides are its own
+            if (Skip(t))  // a character: shown or hidden as a whole, its insides are its own
+            {
+                // ...but whether it can be talked to is story (the old woman, once the yard gate has shut behind you)
+                if (t.GetComponent<GeneralAIController>() != null)
+                    for (int i = 0; i < t.childCount; i++)
+                    {
+                        var c = t.GetChild(i);
+                        if (c.GetComponent<PlayerDetection>() != null)
+                            _building.Add(new Node { Key = $"{key}/{c.name}[{i}]", Go = c.gameObject, On = c.gameObject.activeSelf });
+                    }
+                continue;
+            }
             for (int i = 0; i < t.childCount; i++)
             {
                 var c = t.GetChild(i);

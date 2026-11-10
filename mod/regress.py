@@ -103,7 +103,7 @@ def start(fixture):
         try: os.replace(log_path(inst), log_path(inst) + ".prev")
         except OSError: pass
     r = ps("launch.ps1", "-Instances", f"{HOST},{GUEST}", "-Names", f"{SAVE_NAME},{SAVE_NAME}-guest",
-           "-ExtraArgs", "-coopautoload")
+           "-ExtraArgs", "'-coopautoload','-coopnoinput'")
     if r.returncode != 0: raise SystemExit(f"launch failed: {r.stdout}\n{r.stderr}")
     # In the world on both: the guest has the host's world and sees the host's body.
     if not wait_log(GUEST, r"Names: player 0", 420): raise SystemExit("guest never got into the host's world")
@@ -128,7 +128,7 @@ def common_checks(run):
         run.check(f"{inst}: can walk", moved > 0.7, f"moved {moved:.2f} m")
     # Two digest rounds (15 s each) after things settle.
     time.sleep(40)
-    d = cmd(GUEST, "digest")
+    d = cmd(GUEST, "digest").splitlines()[0]  # log lines written just after it follow
     cats = [c.strip() for c in d.split(";") if c.strip()]
     bad = [c for c in cats if " same" not in c]
     run.check("guest matches host (story flags, trials, progress, objects, pack)", cats and not bad, "; ".join(bad)[:400])
@@ -165,6 +165,7 @@ def door(run, leader):
     run.check("the door talk started on the host", "talking=True" in probe, probe[:160])
     led_by_guest = "conversation led by " + SAVE_NAME + "-guest" in read_log(HOST)[mark:]
     run.check(f"the {leader} leads the talk", led_by_guest == (leader == "guest"), f"led by guest: {led_by_guest}")
+    run.check("the host's own story started it (no callback-less copy)", "nothing here started" not in read_log(HOST)[mark:])
     for _ in range(25):
         if "talking=False" in cmd(HOST, "dlgprobe"): break
         cmd(lead, "next")
@@ -175,7 +176,109 @@ def door(run, leader):
         run.check(f"{inst}: gate open after the talk", ok, g[:200])
 
 
-SCENARIOS = {"door": ("pre-door-1.0.32", door)}
+def tutorial_at(inst):
+    m = re.search(r"tutorial block (\d+) task (\d+)", cmd(inst, "tutorial"))
+    return (int(m.group(1)), int(m.group(2))) if m else None
+
+
+def finish_talk(lead, tries=30):
+    for _ in range(tries):
+        if "talking=False" in cmd(HOST, "dlgprobe"): return True
+        cmd(lead, "next")
+        time.sleep(1.5)
+    return False
+
+
+def dismiss(inst):
+    """Presses OK / Continue on whatever popups are up (they hold the player until answered)."""
+    n = 0
+    for _ in range(6):
+        b = (cmd(inst, "buttons").splitlines() or [""])[0]
+        label = next((l for l in ("OK", "Continue", "CLAIM") if f":'{l}'" in b), None)
+        if not label: break
+        cmd(inst, f"click {label}")
+        n += 1
+        time.sleep(1.5)
+    return n
+
+
+GATE, INWARDS = (82.78, 16.34), (-0.66, -0.75)   # the yard gate, and the way in through it
+
+
+def in_yard(inst):
+    x, _, z = pos(inst)
+    return (x - GATE[0]) * INWARDS[0] + (z - GATE[1]) * INWARDS[1] > 0
+
+
+def yard(run, leader):
+    """After the door talk: in through the gate (it shuts behind), the old woman's talk, the book on the bench, the
+    three journal tasks, the gate opens again and she has one more thing to say."""
+    door(run, leader)
+    lead, other = (HOST, GUEST) if leader == "host" else (GUEST, HOST)
+    cmd(lead, "walkto 84.2 17.9 8")   # in front of the gate, then through it
+    time.sleep(9)
+    cmd(lead, "walkto 80.6 13.6 8")
+    time.sleep(10)
+    for inst in (HOST, GUEST):
+        g = cmd(inst, "gates")
+        run.check(f"{inst}: gate shut behind the {leader}", "open=False" in g and "locked=True" in g, g[:200])
+        run.check(f"{inst}: is in the yard", in_yard(inst), str(pos(inst)))
+    mark = len(read_log(HOST))
+    r = cmd(lead, "interact AtHome")
+    run.check("the old woman can be talked to", "interacted with Baba Jaga_AtHome" in r, r[:160])
+    time.sleep(3)
+    run.check("her talk started on the host", "talking=True" in cmd(HOST, "dlgprobe"))
+    run.check("her talk ended", finish_talk(lead))
+    time.sleep(5)
+    run.check("the host's story ran it", "nothing here started" not in read_log(HOST)[mark:])
+    for inst in (HOST, GUEST):
+        d = cmd(inst, "detections 12")
+        run.check(f"{inst}: the book can be taken", "Collectible_Journal/Player Detection on=True" in d, d[:300])
+    cmd(lead, "walkto 82.3 13.7 6")
+    time.sleep(7)
+    r = cmd(lead, "interact Journal")
+    run.check("the book is taken", "interacted with Collectible_Journal" in r, r[:160])
+    time.sleep(8)
+    steps = [(None, 1, "took the book"), ("journal open", 2, "opened the journal"),
+             ("journal page Quests", 3, "went to the Quests tab"), ("journal closeui", 4, "closed the journal")]
+    mark = len(read_log(HOST))
+    for c, task, what in steps:
+        if c:
+            for _ in range(5):   # the journal opens once this copy knows it has it
+                if "manager on" in cmd(lead, c): break
+                time.sleep(3)
+            time.sleep(6)
+        for inst in (HOST, GUEST):
+            at = tutorial_at(inst)
+            run.check(f"{inst}: tutorial moved on when the {leader} {what}", at == (2, task), f"at {at}")
+    time.sleep(4)
+    for inst in (HOST, GUEST):
+        ok, g = gate_state(inst)
+        run.check(f"{inst}: gate open after the journal", ok, g[:200])
+    # She has one more thing to say as they head out of the yard.
+    cmd(other, "walkto 84.6 18.3 6")
+    time.sleep(3)
+    cmd(lead, "walkto 84.2 17.9 6")
+    started = False
+    for _ in range(20):
+        if "talking=True" in cmd(HOST, "dlgprobe"): started = True; break
+        time.sleep(1)
+    run.check("her next talk started on the host as they left", started)
+    ended = False
+    for _ in range(30):
+        if "talking=False" in cmd(HOST, "dlgprobe"): ended = True; break
+        for inst in (lead, other): cmd(inst, "next")   # whoever leads it
+        time.sleep(1.5)
+    run.check("her next talk ended", ended)
+    time.sleep(3)
+    for inst in (HOST, GUEST):   # "you have been told about a location", "her birds are yours to use"
+        run.check(f"{inst}: got the popups that follow it", dismiss(inst) > 0)
+    time.sleep(5)
+    run.check("the host's story ran that too", "nothing here started" not in read_log(HOST)[mark:])
+    run.check("both tutorials at the same place", tutorial_at(HOST) == tutorial_at(GUEST), f"{tutorial_at(HOST)} / {tutorial_at(GUEST)}")
+
+
+SCENARIOS = {"door": ("pre-door-1.0.32", door), "yard": ("pre-door-1.0.32", yard)}
 
 
 def main():

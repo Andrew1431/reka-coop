@@ -30,7 +30,7 @@ public static class PoiSync
 
     private class Pending { public string Key; public byte[] Gz; public float Since; }
 
-    private static readonly Regex FloatRx = new(@">-?\d+\.\d+(E[-+]?\d+)?<");
+    private static readonly Regex FloatRx = new(@">-?\d+\.\d+(E[-+]?\d+)?<|(?<=<float)>-?\d+<");
     private static readonly Regex AxisRx = new(@"<([xyzw])>[^<]*</\1>|<setActiveOrder>.*?</setActiveOrder>|<setActiveOrder />|<debug>.*?</debug>", RegexOptions.Singleline);
     // Where each child sits and whether it shows; villagers' tools and animals flicker these all the time.
     // what animals and villagers are busy with (their own AI, not the place's state), and countdowns.

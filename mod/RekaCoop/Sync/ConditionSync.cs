@@ -41,15 +41,51 @@ public static class ConditionSync
     internal static void LocalGate(Tutorial_FenceGateLock gate, bool open)
     {
         if (Replaying || gate == null || _session == null || !_session.IsConnected) return;
+        if (WorldSync.IsGuest) return;   // the host's gate is the one that counts; it tells us
         var me = Find.One<PlayerMovement_2021>()?.transform;
         var w = _session.BeginMessage(MsgType.Condition);
         w.Put((byte)(open ? Kind.GateOpen : Kind.GateClose));
-        w.Put(_session.LocalPlayerId);
-        w.Put(ScenePath.Of(gate.transform));
+        // Host: the story may be running for a guest (they walked into the yard): they are the one who closed it.
+        int who = _session.LocalPlayerId;
         var at = me != null ? me.position : UnityEngine.Vector3.zero;
+        int actor = _session.Role == Role.Host ? ActingPlayer.Current : -1;
+        var puppet = actor >= 0 ? PlayerSync.PuppetRoot(actor) : null;
+        if (puppet != null) { who = actor; at = puppet.position; }
+        w.Put(who);
+        w.Put(ScenePath.Of(gate.transform));
         w.Put(at.x); w.Put(at.y); w.Put(at.z);
         _session.Send(w, DeliveryMethod.ReliableOrdered);
-        Plugin.Logger.LogInfo($"Conditions: gate {(open ? "opened" : "closed")} here");
+        Plugin.Logger.LogInfo($"Conditions: gate {(open ? "opened" : "closed")} here{(puppet != null ? " for " + NameTags.NameOf(who) : "")}");
+        if (puppet != null && !open) BringIn(gate, who, at);
+    }
+
+    // In beside whoever closed the gate, so it doesn't close with us outside. Which side of the gate counts, not how
+    // far: standing just outside it (under 3 m from the closer) used to leave us out.
+    private static void BringIn(Tutorial_FenceGateLock gate, int player, UnityEngine.Vector3 at)
+    {
+        var me = Find.One<PlayerMovement_2021>();
+        var g = gate.transform;
+        // The gate closes once the closer is a few steps in: inwards is from the gate to them. (The door's own axes
+        // were used before; they don't say which way is in, and a host standing outside was left there.)
+        var across = at - g.position;
+        // The yard's own "inside the fence" area says it best; the closer may still be in the gateway.
+        var siblings = g.parent;
+        for (int i = 0; siblings != null && i < siblings.childCount; i++)
+        {
+            var c = siblings.GetChild(i);
+            if (c.name.Contains("Inside") && c.GetComponent<PlayerTrigger>() != null) { across = c.position - g.position; break; }
+        }
+        across.y = 0;
+        if (me == null || across.magnitude < 0.5f) { Plugin.Logger.LogInfo($"Conditions: can't tell which way is in at the gate (me {(me != null)}, closer {at}, gate {g.position})"); return; }
+        across.Normalize();
+        var mine = me.transform.position - g.position;
+        if (UnityEngine.Vector3.Dot(mine, across) > 0.3f && (me.transform.position - at).magnitude <= 15f) { Plugin.Logger.LogInfo("Conditions: already in the yard"); return; }
+        var to = g.position + across * 3f;  // a few steps in
+        to.y = at.y;
+        var rb = me.GetComponent<UnityEngine.Rigidbody>();
+        if (rb != null) rb.position = to;
+        me.transform.position = to;
+        Plugin.Logger.LogInfo($"Conditions: moved in beside {NameTags.NameOf(player)} at the gate");
     }
 
     private static void OnGate(CoopSession session, NetDataReader r, Kind kind)
@@ -65,24 +101,7 @@ public static class ConditionSync
         }
         var gate = ScenePath.Resolve(path)?.GetComponent<Tutorial_FenceGateLock>();
         if (gate == null) { Plugin.Logger.LogInfo($"Conditions: no gate {path} here"); return; }
-        if (kind == Kind.GateClose)
-        {
-            // In beside them first, so the gate doesn't close with us outside. Which side of the gate counts, not how
-            // far: standing just outside it (under 3 m from the closer) used to leave us out.
-            var me = Find.One<PlayerMovement_2021>();
-            var g = gate.transform;
-            var box = gate.GetComponent<UnityEngine.BoxCollider>();
-            var across = box != null && box.size.z < box.size.x ? g.forward : g.right;  // the door's thin side faces in and out
-            float Side(UnityEngine.Vector3 p) => UnityEngine.Vector3.Dot(p - g.position, across);
-            if (me != null && (UnityEngine.Mathf.Sign(Side(me.transform.position)) != UnityEngine.Mathf.Sign(Side(at)) || (me.transform.position - at).magnitude > 15f))
-            {
-                var to = at + across * UnityEngine.Mathf.Sign(Side(at)) * 1.2f;  // a step further in than the closer
-                var rb = me.GetComponent<UnityEngine.Rigidbody>();
-                if (rb != null) rb.position = to;
-                me.transform.position = to;
-                Plugin.Logger.LogInfo($"Conditions: moved in beside {NameTags.NameOf(player)} at the gate");
-            }
-        }
+        if (kind == Kind.GateClose && player != session.LocalPlayerId) BringIn(gate, player, at);
         Replaying = true;
         try
         {
