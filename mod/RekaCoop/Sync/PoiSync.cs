@@ -26,7 +26,6 @@ public static class PoiSync
 
     // A guest only reports changes to places near it; a far place that changed by itself there (a villager's request
     // rolled differently, say) is fetched from the host instead.
-    private const float GuestReach = 40f;
 
     private class Pending { public string Key; public byte[] Gz; public float Since; }
 
@@ -247,7 +246,9 @@ public static class PoiSync
         var before = k;
         _known[key] = sig;
         if (isNew) return;  // first look at this place
-        if (session.Role == Role.Client && !Near(poi))
+        // A guest never sends a place (PLAN.md, rule 2): what its player did there went to the host as an intent, and
+        // the host's copy is the one that counts. Its own copy differing means the host's is due, or was missed.
+        if (session.Role == Role.Client)
         {
             var rq = session.BeginMessage(MsgType.Poi);
             rq.Put((byte)Kind.Request);
@@ -261,12 +262,6 @@ public static class PoiSync
         WriteState(w2, key, xml);
         session.Send(w2, DeliveryMethod.ReliableOrdered);
         Plugin.Logger.LogInfo($"Places: {poi.name} ({key}) changed at {(before == null ? "its parts" : FirstDifference(before, sig))}; sent {xml.Length} chars");
-    }
-
-    private static bool Near(POI_SaveLoad poi)
-    {
-        var me = RekaCoop.Sync.Find.One<PlayerMovement_2021>();
-        return me == null || Vector3.Distance(me.transform.position, poi.transform.position) < GuestReach;
     }
 
     private static string FirstDifference(string a, string b)
@@ -375,15 +370,7 @@ public static class PoiSync
         else if (kind == Kind.State)
         {
             var (key, gz) = ReadState(r);
-            if (session.Role == Role.Host)
-            {
-                var w = session.BeginMessage(MsgType.Poi);
-                w.Put((byte)Kind.State);
-                w.Put(key);
-                w.Put(gz.Length);
-                w.Put(gz);
-                session.Send(w, DeliveryMethod.ReliableOrdered, exceptPlayerId: from.PlayerId);
-            }
+            if (session.Role == Role.Host) return;  // guests don't send places; an older build's is ignored
             if (_known == null) return;  // the snapshot will carry it
             var all = All();
             if (all.TryGetValue(key, out var p)) Apply(p, KeepFilled(Capture(p, out _), Gunzip(gz)));

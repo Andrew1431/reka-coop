@@ -396,8 +396,113 @@ def home(run, leader):
 
 
 # In story order. Each starts from its own fixture when run alone; chained, each starts where the one before ended.
+def detector(inst, name):
+    """The `detectors` line of the player detector whose path ends with name ('' when it isn't listed)."""
+    return next((l for l in cmd(inst, "detectors 150").splitlines() if name + " on=" in l), "")
+
+
+def chicken(run, leader):
+    """After the indoor talk: the crooked pine's branch, a chicken carried to the old woman behind the house, her talk
+    at the ritual site, the chicken put in the nest. The leader does all of it; the other stands away."""
+    lead, other = (HOST, GUEST) if leader == "host" else (GUEST, HOST)
+    for inst in (HOST, GUEST): dismiss(inst)
+    mark = len(read_log(HOST))
+    cmd(lead, "tp 102 41 4"); cmd(other, "tp 100 43 4")
+    time.sleep(4)
+    r = cmd(lead, "interact Pinewood")
+    run.check("the pine branch is taken", "interacted with" in r, r[:160])
+    time.sleep(6)
+    tasks_done(run, 5, f"the {leader} has the pine branch")
+    for inst in (HOST, GUEST):
+        run.check(f"{inst}: has the pine branch as a tool", "PineBranch" in cmd(inst, "status"))
+        dismiss(inst)
+    # A chicken from the yard; the old woman's lines behind the house depend on someone carrying one.
+    cmd(lead, "tp 80 20 4"); cmd(other, "tp 60 30 4")
+    time.sleep(4)
+    r = cmd(lead, "interact Chicken_01")
+    run.check("a chicken is picked up", "interacted with" in r, r[:160])
+    time.sleep(4)
+    for inst in (HOST, GUEST):
+        d = detector(inst, "Dialogue_BringChicken")
+        run.check(f"{inst}: she will greet whoever brings the chicken", "on=True" in d, d[-200:] or "not listed")
+    cmd(lead, "tp 86 4 4")
+    time.sleep(3)
+    walk(lead, 84, -1, 8)
+    run.check("her greeting started on the host", until(lambda: talking(HOST), 10))
+    run.check("it is the one for a chicken brought", "Didn" not in cmd(HOST, "dlgprobe"), cmd(HOST, "dlgprobe")[-120:])
+    run.check("her greeting ended", finish_talk(lead))
+    # She walks to the ritual site; her talk there starts when a player comes up to her.
+    run.check("she reached the ritual site", until(lambda: "on=True" in detector(HOST, "Dialogue_SiteDescription/PlayerTrigger"), 90, 2))
+    cmd(lead, "tp 50 -19 5")
+    time.sleep(3)
+    walk(lead, 41.6, -22.6, 10)
+    run.check("her talk at the site started on the host", until(lambda: talking(HOST), 10))
+    run.check("that talk ended", finish_talk(lead))
+    time.sleep(5)
+    tasks_done(run, 6, f"the {leader} brought the chicken")
+    walk(lead, 31, -26.5, 12)
+    r = cmd(lead, "drop")
+    run.check("the chicken is put down at the nest", "dropped" in r, r[:120])
+    run.check("she speaks about the branch next", until(lambda: talking(HOST), 15))
+    run.check("that talk ended", finish_talk(lead))
+    time.sleep(4)
+    tasks_done(run, 7, "the chicken is in the nest")
+    log = read_log(HOST)[mark:]
+    run.check("the host placed the chicken once", log.count("Ritual: PlacedChicken") == 1, str(log.count("Ritual: PlacedChicken")))
+    for inst in (HOST, GUEST): dismiss(inst)
+
+
+def sweep(inst, ring, spots=5):
+    """Sweeps every spot of a ritual ring with the pine branch, standing on each in turn."""
+    tools = cmd(inst, "equip")
+    m = re.search(r"(\d+) PineBranch", tools)
+    if not m: return False
+    cmd(inst, f"equip {m.group(1)}")
+    time.sleep(1.5)
+    for spot in range(spots):
+        if "at spot" not in cmd(inst, f"useitem {ring} at {spot}"): return False
+        time.sleep(0.8)
+        for _ in range(6):
+            cmd(inst, "useitem press")
+            time.sleep(0.3)
+        cmd(inst, "useitem release")
+        time.sleep(1)
+    return True
+
+
+def ring(inst, name):
+    """A ring's spots as the `useitem` command shows them, e.g. 'True [x(off)1.0/1.0 ...]'."""
+    return cmd(inst, f"useitem {name}").split("solved=")[-1].splitlines()[0]
+
+
+def cleanse(run, leader):
+    """The four rings of the ritual site, swept with the pine branch: the leader takes the first and third, the other
+    the second and fourth. Each counts once, on the host."""
+    lead, other = (HOST, GUEST) if leader == "host" else (GUEST, HOST)
+    for inst in (HOST, GUEST): dismiss(inst)
+    mark = len(read_log(HOST))
+    for n, who in ((1, lead), (2, other), (3, lead), (4, other)):
+        name = f"Cleanse_0{n}"
+        run.check(f"ring {n} is ready", until(lambda: ring(HOST, name).startswith("False [.") and "(off)" not in ring(HOST, name), 90, 2), ring(HOST, name)[:80])
+        run.check(f"ring {n} swept by {who}", sweep(who, name))
+        ok = until(lambda: all(ring(i, name).startswith("True") for i in (HOST, GUEST)), 12)
+        run.check(f"ring {n} is done on both copies", ok, f"{ring(HOST, name)[:60]} / {ring(GUEST, name)[:60]}")
+        run.check(f"she says so after ring {n}", until(lambda: talking(HOST), 10))
+        run.check(f"that talk ended", finish_talk(who))
+        time.sleep(3)
+    time.sleep(4)
+    tasks_done(run, 8, "all four rings are swept")
+    log = read_log(HOST)[mark:]
+    n = log.count("Ritual: CleansedSingleSite")
+    run.check("the host counted four rings", n == 4, str(n))
+    top = max([int(x) for x in re.findall(r"tutorial_ritualSitesCleansed=(\d+)", log)] or [0])
+    run.check("the tracker counted four rings", top == 4, str(top))
+    for inst in (HOST, GUEST): dismiss(inst)
+
+
 SCENARIOS = {"door": ("pre-door-1.0.32", door), "yard": ("after-door-1.0.32", yard),
-             "lutki": ("after-yard-1.0.32", lutki), "home": ("talisman-1.0.32", home)}
+             "lutki": ("after-yard-1.0.32", lutki), "home": ("talisman-1.0.32", home),
+             "chicken": ("pine-1.0.40", chicken), "cleanse": ("cleanse-1.0.40", cleanse)}
 
 
 def between_checks(run, name):
