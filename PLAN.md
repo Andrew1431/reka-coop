@@ -97,6 +97,20 @@ proved on the tutorial beat that first needs it, not a plan per scene:
       - Same session: "playtest-guest asked for Say at Home[0]/PlatformFollower[9]/BB_Chicken_Skeleton_Chair(Clone)_
         00:02:27.7450000[32]/TalkableVillager[3], not found here": the chair's name carries a time stamp that
         differs per copy, so a guest cannot talk to the chair (ScenePath by name fails for built pieces).
+      - The user's overall word: "Stuff feels jank but it does also all feel like it stays synchronized better";
+        "Travelling between maps was very jank indeed, eventually all synced up". The session reached the Lutki
+        place on the forest spirit's map. Its save is kept at `local/saves-playtest/andrew-2026-11-11` (and still in
+        `game/play/CoopSaves/playtest`), with both logs beside it, to come back to.
+      - **Questions to ask the user when they are back** (they said they will answer):
+        1. What exactly was jank about the travel: the order of things, the waits, what each window showed?
+        2. Talking to the elder Lutki as the host: did the guest follow, and where was its camera?
+        3. Could the guest start a talk with the elder Lutki at all?
+        4. Giving a small Lutki an item: did it leave the shared pack on both windows?
+        5. A guest freeing a stuck Lutki or shooting a trap / high stand: did the loot card on the host get in
+           either player's way?
+        6. Does the journal or the elder say what the stuck-Lutki quest needs beyond freeing all three (in tests
+           that alone did not count as a favour)?
+        7. The food screen before travel: what did it ask for and what did it accept?
         User's leaning on the drive (to discuss later, nothing decided): lock everyone's movement and have them follow the
         host's drive, as the simple and safe option. The dream version is smooth hut movement with either player
         able to drive, but the hut's two-legged walk is shaky by nature, so walking around aboard would likely look

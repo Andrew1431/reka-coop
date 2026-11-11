@@ -58,7 +58,18 @@ public static class StoryInteract
     {
         if (pd == null) return;
         Running = true;
-        try { pd.SimulateInteraction(); }
+        try
+        {
+            // A window open on the host (a loot card from the last thing a guest did, a tool unlock) takes the host
+            // out of play, and the game then ignores a use: the guest pressed, nothing happened, and nothing said
+            // why. The guest is in play; what using this sets off is run directly.
+            if (PopUpManager.isShowingPopupOrInQueue && pd.OnTryToInteract != null)
+            {
+                Plugin.Logger.LogInfo($"Story: a window is open here; running {pd.name}'s use for the guest past it");
+                pd.OnTryToInteract.Invoke();
+            }
+            else pd.SimulateInteraction();
+        }
         catch (System.Exception e) { Plugin.Logger.LogWarning($"Story: using {pd.name} failed: {e.Message}"); }
         finally { Running = false; }
     }
