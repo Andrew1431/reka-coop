@@ -498,35 +498,36 @@ def chicken(run, leader):
     for inst in (HOST, GUEST):
         run.check(f"{inst}: has the pine branch as a tool", "PineBranch" in cmd(inst, "status"))
         dismiss(inst)
+    carrier, stander = (other, lead) if SPLIT else (lead, other)
     # A chicken from the yard; the old woman's lines behind the house depend on someone carrying one.
-    cmd(lead, "tp 80 20 4"); cmd(other, "tp 60 30 4")
+    cmd(carrier, "tp 80 20 4"); cmd(stander, "tp 60 30 4")
     time.sleep(4)
-    r = cmd(lead, "interact Chicken_01")
+    r = cmd(carrier, "interact Chicken_01")
     run.check("a chicken is picked up", "interacted with" in r, r[:160])
     time.sleep(4)
     for inst in (HOST, GUEST):
         d = detector(inst, "Dialogue_BringChicken")
         run.check(f"{inst}: she will greet whoever brings the chicken", "on=True" in d, d[-200:] or "not listed")
-    cmd(lead, "tp 86 4 4")
+    cmd(carrier, "tp 86 4 4")
     time.sleep(3)
-    walk(lead, 84, -1, 8)
+    walk(carrier, 84, -1, 8)
     run.check("her greeting started on the host", until(lambda: talking(HOST), 10))
     run.check("it is the one for a chicken brought", "Didn" not in cmd(HOST, "dlgprobe"), cmd(HOST, "dlgprobe")[-120:])
-    run.check("her greeting ended", finish_talk(lead))
+    run.check("her greeting ended", finish_any(carrier, stander))
     # She walks to the ritual site; her talk there starts when a player comes up to her.
     run.check("she reached the ritual site", until(lambda: "on=True" in detector(HOST, "Dialogue_SiteDescription/PlayerTrigger"), 90, 2))
-    cmd(lead, "tp 50 -19 5")
+    cmd(carrier, "tp 50 -19 5")
     time.sleep(3)
-    walk(lead, 41.6, -22.6, 10)
+    walk(carrier, 41.6, -22.6, 10)
     run.check("her talk at the site started on the host", until(lambda: talking(HOST), 10))
-    run.check("that talk ended", finish_talk(lead))
+    run.check("that talk ended", finish_any(carrier, stander))
     time.sleep(5)
     tasks_done(run, 6, f"the {leader} brought the chicken")
-    walk(lead, 31, -26.5, 12)
-    r = cmd(lead, "drop")
+    walk(carrier, 31, -26.5, 12)
+    r = cmd(carrier, "drop")
     run.check("the chicken is put down at the nest", "dropped" in r, r[:120])
     run.check("she speaks about the branch next", until(lambda: talking(HOST), 15))
-    run.check("that talk ended", finish_talk(lead))
+    run.check("that talk ended", finish_any(carrier, stander))
     time.sleep(4)
     tasks_done(run, 7, "the chicken is in the nest")
     log = read_log(HOST)[mark:]
@@ -582,6 +583,9 @@ def cleanse(run, leader):
     for inst in (HOST, GUEST): dismiss(inst)
 
 
+SPLIT = False   # a "mixed" run: the two players share each step (one starts it, the other ends it) and swap who starts
+
+
 def finish_any(lead, other):
     """Clicks a talk to its end whoever leads it: the leader of the step first, then the other."""
     return finish_talk(lead, 40) or finish_talk(other, 40)
@@ -606,11 +610,21 @@ def egg(run, leader):
     run.check("that talk ended", finish_talk(lead))
     time.sleep(4)
     tasks_done(run, 9, f"the {leader} brought the egg")
-    walk(lead, 29.5, -27, 10)
-    r = cmd(lead, "interact RitualEggSpot")
+    placer, bringer = (other, lead) if SPLIT else (lead, other)
+    if SPLIT:
+        cmd(bringer, "drop")
+        time.sleep(3)
+        cmd(placer, "tp 34 -30 5")
+        time.sleep(3)
+        cmd(placer, "interact Ritual_Egg")
+        time.sleep(4)
+        run.check("the other player took the egg over", "Ritual_Egg" in cmd(HOST, "carry") and "Ritual_Egg" in cmd(placer, "carry"), cmd(HOST, "carry")[:120])
+        cmd(bringer, "tp 45 -35 5")
+    walk(placer, 29.5, -27, 10)
+    r = cmd(placer, "interact RitualEggSpot")
     run.check("the egg is put into the oven", "interacted with" in r, r[:160])
     run.check("she speaks once it is in", until(lambda: talking(HOST), 15))
-    run.check("that talk ended", finish_talk(lead))
+    run.check("that talk ended", finish_any(placer, bringer))
     time.sleep(5)
     tasks_done(run, 10, "the egg is in the oven")
     for inst in (HOST, GUEST):
@@ -644,18 +658,19 @@ def offerings(run, leader):
     # so closely that the clicking above usually ends it too.
     if until(lambda: talking(HOST), 20, 2): run.check("her call from the second bowl ended", finish_any(HOST, GUEST))
     run.check("the second bowl can be filled", until(lambda: "grain_bunch on=True" in cmd(HOST, "detections 80"), 90, 3))
-    cmd(lead, "tp 85 4 4")
+    second, first = (other, lead) if SPLIT else (lead, other)
+    cmd(second, "tp 85 4 4")
     time.sleep(4)
     for _ in range(3):
-        cmd(lead, "collect Grain")
+        cmd(second, "collect Grain")
         time.sleep(2.5)
     run.check("grain is in the shared pack", all(pack_count(i, "Item_Collected_Tier0_Grain") == 3 for i in (HOST, GUEST)), cmd(HOST, "inv")[:200])
-    cmd(lead, "tp 27 -24 4")
+    cmd(second, "tp 27 -24 4")
     time.sleep(4)
-    r = cmd(lead, "interact grain_bunch")
+    r = cmd(second, "interact grain_bunch")
     run.check("grain goes into the second bowl", "interacted with" in r, r[:160])
     run.check("she speaks once both are filled", until(lambda: talking(HOST), 15))
-    run.check("that talk ended", finish_any(lead, other))
+    run.check("that talk ended", finish_any(second, first))
     time.sleep(5)
     tasks_done(run, 11, "both offerings are placed")
     log = read_log(HOST)[mark:]
@@ -686,14 +701,17 @@ def bones(run, leader):
     for inst in (HOST, GUEST):
         run.check(f"{inst}: has the charm", "SvarogCharm" in cmd(inst, "equip"), cmd(inst, "equip")[:160])
     # A talk gathers everyone beside the starter: away again, and with empty hands, so only the leader's charm counts.
-    cmd(other, "tp 60 -30 5"); cmd(other, "equip 0")
-    if "holding SvarogCharm" not in cmd(lead, "equip"):
-        m = re.search(r"(\d+) SvarogCharm", cmd(lead, "equip"))
-        if m: cmd(lead, f"equip {m.group(1)}")
+    # Split: both walk the circle, on opposite sides, and every bone still counts once.
+    if not SPLIT: cmd(other, "tp 60 -30 5"); cmd(other, "equip 0")
+    for who in ((lead, other) if SPLIT else (lead,)):
+        if "holding SvarogCharm" not in cmd(who, "equip"):
+            m = re.search(r"(\d+) SvarogCharm", cmd(who, "equip"))
+            if m: cmd(who, f"equip {m.group(1)}")
     done = False
     for k in range(24):
         a = k * math.pi / 4
         cmd(lead, f"tp {27 + 4 * math.cos(a):.1f} {-27 + 4 * math.sin(a):.1f} 4.5")
+        if SPLIT: cmd(other, f"tp {27 - 4 * math.cos(a):.1f} {-27 - 4 * math.sin(a):.1f} 4.5")
         time.sleep(4)
         if trial_tasks(HOST).startswith("x" * 14): done = True; break
     run.check("the bones are gone", done, f"host {dissolved(HOST)}, guest {dissolved(GUEST)}")
@@ -704,6 +722,9 @@ def bones(run, leader):
     log = read_log(HOST)[mark:]
     top = max([int(x) for x in re.findall(r"tutorial_bonesDissolved=(\d+)", log)] or [0])
     run.check("no bone was counted twice", 0 < top <= 28, str(top))
+    if SPLIT:
+        asked = len(set(re.findall(r"Bones: bone (\d+) started for", log)))
+        run.check("some bones fell to the guest's charm and some to the host's", 0 < asked < top, f"{asked} of {top} by the guest")
     run.check("the host finished the bones once", count(log, "Ritual: DissolvedAllBones") == 1, str(count(log, "Ritual: DissolvedAllBones")))
     for inst in (HOST, GUEST): dismiss(inst)
 
@@ -722,23 +743,24 @@ def embers(run, leader):
     time.sleep(4)
     # The fire tool's unlock popup: until it is answered nothing can be interacted with on that copy.
     for inst in (HOST, GUEST): dismiss(inst)
-    cmd(other, "tp 45 -35 5"); cmd(lead, "tp 79.5 9 4.5")
+    fetcher, talker = (other, lead) if SPLIT else (lead, other)
+    cmd(talker, "tp 45 -35 5"); cmd(fetcher, "tp 79.5 9 4.5")
     time.sleep(4)
-    r = cmd(lead, "interact CarriableEmbers")
+    r = cmd(fetcher, "interact CarriableEmbers")
     time.sleep(4)
     run.check("the embers are picked up", "CarriableEmbers" in cmd(HOST, "carry"), r[:120] + " / " + cmd(HOST, "carry")[:120])
     tasks_done(run, 14, f"the {leader} has the embers")
-    cmd(lead, "tp 40 -29 5")
+    cmd(fetcher, "tp 40 -29 5")
     time.sleep(4)
-    walk(lead, 42.5, -27, 8)
+    walk(fetcher, 42.5, -27, 8)
     run.check("she asks for them", until(lambda: talking(HOST), 15))
-    run.check("that talk ended", finish_talk(lead))
+    run.check("that talk ended", finish_any(fetcher, talker))
     time.sleep(3)
-    cmd(lead, "tp 40 -28.5 4")
+    cmd(fetcher, "tp 40 -28.5 4")
     time.sleep(3)
-    cmd(lead, "fields POI_PlayerAreaTrigger@InteractDialogue_GiveEmbers invoke TryToInteract")
+    cmd(fetcher, "fields POI_PlayerAreaTrigger@InteractDialogue_GiveEmbers invoke TryToInteract")
     run.check("handing them over starts her talk", until(lambda: talking(HOST), 10))
-    run.check("that talk ended", finish_talk(lead))
+    run.check("that talk ended", finish_any(fetcher, talker))
     time.sleep(5)
     tasks_done(run, 15, "she has the embers")
     for inst in (HOST, GUEST):
@@ -825,7 +847,9 @@ def main():
         print(f"started in {only}", flush=True)
         return
     names = [n for n in SCENARIOS if n in args]
-    leaders = [a for a in args if a in ("host", "guest")] or ["host", "guest"]
+    leaders = [a for a in args if a in ("host", "guest", "mixed")] or ["host", "guest", "mixed"]
+    global SPLIT
+    def who(leader, i): return leader if leader != "mixed" else ("host", "guest")[i % 2]
     order = list(SCENARIOS)
     runs = []
     t0 = time.time()
@@ -834,11 +858,12 @@ def main():
         for name in names or order:
             fixture, fn = SCENARIOS[name]
             for leader in leaders:
-                run = Run(f"{name} / {leader} leads")
+                run = Run(f"{name} / {leader} leads" if leader != "mixed" else f"{name} / shared, host first")
                 print(f"== {run.name}", flush=True)
+                SPLIT = leader == "mixed"
                 try:
                     start(fixture)
-                    fn(run, leader)
+                    fn(run, who(leader, 0))
                     common_checks(run)
                 except (TimeoutError, SystemExit) as e:
                     run.check("run completed", False, str(e))
@@ -846,14 +871,15 @@ def main():
     else:
         # Chained: one playthrough per leader, every scenario in story order in the same session.
         for leader in leaders:
-            run = Run(f"playthrough ({', '.join(order)}) / {leader} leads")
+            run = Run(f"playthrough ({', '.join(order)}) / " + (f"{leader} leads" if leader != "mixed" else "shared, taking turns"))
             print(f"== {run.name}", flush=True)
+            SPLIT = leader == "mixed"
             try:
                 start(SCENARIOS[order[0]][0])
                 for i, name in enumerate(order):
                     print(f" -- {name}", flush=True)
                     if fixtures and i > 0 and leader == leaders[0]: save_fixture(SCENARIOS[name][0])
-                    SCENARIOS[name][1](run, leader)
+                    SCENARIOS[name][1](run, who(leader, i))
                     if i < len(order) - 1: between_checks(run, name)
                 common_checks(run)
             except (TimeoutError, SystemExit) as e:

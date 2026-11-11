@@ -78,6 +78,9 @@ proved on the tutorial beat that first needs it, not a plan per scene:
 - [ ] An unanswered popup on the host (a tool unlock) blocks every interaction there, including the ones the host runs
       for a guest's press: nothing happens and nothing says why. Seen in scripted runs (input off); in real play the
       host just has to click OK, but the guest can't know. Run a guest's interaction past the block, or tell the guest.
+- [ ] The talk camera is often wrong on the copy that does not lead the talk (reported by the user 2026-11-11, embers
+      talk "Pfft, don't look at me like that": the host frames the old woman, the guest looks at its own player's back
+      from behind with her out of frame). Many talks. Not urgent.
 - [ ] Guests still send `GenericPOICondition` changes to the host. The host now waits 2 s and only takes a guest's
       word if its own copy has not got there (it used to run what hangs on the condition twice). Remove once the
       Lutki's planks no longer need it (phase 4).

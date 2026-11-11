@@ -42,7 +42,11 @@ internal static class BoneSync
     {
         var bones = d.bones;
         if (bones == null || index < 0 || index >= bones.Count || bones[index] == null) return;
-        try { d.StartDissolve(bones[index]); }
+        try
+        {
+            d.StartDissolve(bones[index]);
+            Plugin.Logger.LogInfo($"Bones: bone {index} started for {NameTags.NameOf(player)}");
+        }
         catch (System.Exception e) { Plugin.Logger.LogWarning($"Bones: starting bone {index} for {NameTags.NameOf(player)} failed: {e.Message}"); }
     }
 }
