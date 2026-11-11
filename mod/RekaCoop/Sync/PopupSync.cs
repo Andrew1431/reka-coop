@@ -71,8 +71,13 @@ public static class PopupSync
         Plugin.Logger.LogInfo($"Popups: sent the unlock popup for {id}");
     }
 
+    // Host: a question that is the host's alone to answer is being put up (whether to travel on, asked of whoever
+    // drives the hut). A guest shown it could only press "Continue", and as a passenger not even that.
+    internal static bool HostsQuestion;
+
     internal static void LocalMessage(string message, Sprite sprite, Il2CppSystem.Collections.Generic.List<string> labels, int type)
     {
+        if (HostsQuestion) return;
         if (string.IsNullOrEmpty(message) || HostBegin(Kind.Message) is not { } w) return;
         w.Put(message); w.Put(sprite != null ? sprite.name : ""); w.Put(type);
         w.Put(labels != null && labels.Count == 1 ? labels[0] ?? "" : "");
@@ -321,6 +326,12 @@ public static class PopupSync
 [HarmonyPatch]
 internal static class PopupHooks
 {
+    [HarmonyPrefix, HarmonyPatch(typeof(MapBorderFogManager), nameof(MapBorderFogManager.TriggerTravel))]
+    private static void TravelAsked() => PopupSync.HostsQuestion = true;
+
+    [HarmonyFinalizer, HarmonyPatch(typeof(MapBorderFogManager), nameof(MapBorderFogManager.TriggerTravel))]
+    private static void TravelAskedDone() => PopupSync.HostsQuestion = false;
+
     [HarmonyPostfix, HarmonyPatch(typeof(PopUp_Loot), nameof(PopUp_Loot.QueuePopUp))]
     private static void Loot(string __0, Il2CppSystem.Collections.Generic.List<PossessionStack> __1, Il2CppSystem.Collections.Generic.List<BuildingBlock> __2) =>
         PopupSync.LocalLoot(__0, __1, __2);

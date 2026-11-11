@@ -587,6 +587,14 @@ public static class DialogueSync
         if (_talking) return;
         _talking = true;
         _leader = _requestedBy >= 0 && Time.unscaledTime - _requestedAt < RequestWindow ? _requestedBy : Me;
+        // While the host drives the hut the guests ride along with their keys off: a talk led by one of them (the hut's
+        // clucking when travel is confirmed, which a guest's walk through some detector had "set off") could not be
+        // clicked on by anyone. The driver leads.
+        if (_leader != Me && HutSync.HostDriving)
+        {
+            Plugin.Logger.LogInfo($"Dialogue: {NameTags.NameOf(_leader)} is a passenger while the host drives; leading it here");
+            _leader = Me;
+        }
         // A guest still loading (the arrival talk after travelling starts at once) couldn't click on: nobody could.
         if (_leader != Me && !PlayerSync.InWorldNow(_leader))
         {

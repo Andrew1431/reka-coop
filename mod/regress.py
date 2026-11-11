@@ -54,7 +54,23 @@ def log_tail(inst, offset):
 
 
 def cmd(inst, text, wait=8.0):
-    """Runs a dev command; returns its result (the text after '->', plus following lines)."""
+    """Runs a dev command; returns its result (the text after '->', plus following lines). A teleport is checked: a
+    talk that is just ending puts a player back where it gathered them, and the step that follows then acted from
+    16 m away (seen once the suite got fast)."""
+    r = send(inst, text, wait)
+    m = re.match(r"tp (-?[\d.]+) (-?[\d.]+) (-?[\d.]+)$", text)
+    if not m: return r
+    x, z = float(m.group(1)), float(m.group(2))
+    for _ in range(4):
+        time.sleep(0.5)
+        at = re.search(r"pos \(([-\d.]+), ([-\d.]+), ([-\d.]+)\)", send(inst, "pos"))
+        if not at or (abs(float(at.group(1)) - x) < 2 and abs(float(at.group(3)) - z) < 2): break
+        r = send(inst, text, wait)
+    return r
+
+
+def send(inst, text, wait=8.0):
+    """One dev command, as it is."""
     try: before = os.path.getsize(log_path(inst))
     except OSError: before = 0
     req = os.path.join(GAME, inst, "cmd.request")

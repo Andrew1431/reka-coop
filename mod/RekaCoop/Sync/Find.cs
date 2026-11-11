@@ -196,6 +196,15 @@ public static class ScenePath
 {
     private static readonly Dictionary<System.IntPtr, string> RootIds = new();
 
+    // A piece built into the house is named after the moment it was placed on that copy
+    // ("BB_Chicken_Skeleton_Chair(Clone)_00:02:27.7450000"); the same piece has another moment on another copy.
+    private static string Plain(string name)
+    {
+        int at = name.LastIndexOf(")_");
+        if (at < 0 || name.Length - at < 10 || !char.IsDigit(name[at + 2]) || name.IndexOf(':', at) < 0) return name;
+        return name[..(at + 1)];
+    }
+
     private static string RootId(Transform root)
     {
         if (RootIds.TryGetValue(root.Pointer, out var id)) return id;
@@ -212,7 +221,8 @@ public static class ScenePath
         for (; t != null; t = t.parent)
         {
             string id = t.parent == null ? RootId(t) : "";
-            parts.Add(id.Length > 0 ? $"{t.name}#{id}[{t.GetSiblingIndex()}]" : $"{t.name}[{t.GetSiblingIndex()}]");
+            string name = Plain(t.name);
+            parts.Add(id.Length > 0 ? $"{name}#{id}[{t.GetSiblingIndex()}]" : $"{name}[{t.GetSiblingIndex()}]");
         }
         parts.Reverse();
         return string.Join("/", parts);
@@ -266,8 +276,8 @@ public static class ScenePath
 
     private static Transform Child(Transform parent, string name, int index)
     {
-        if (index < parent.childCount && parent.GetChild(index).name == name) return parent.GetChild(index);
-        for (int i = 0; i < parent.childCount; i++) if (parent.GetChild(i).name == name) return parent.GetChild(i);
+        if (index < parent.childCount && Plain(parent.GetChild(index).name) == name) return parent.GetChild(index);
+        for (int i = 0; i < parent.childCount; i++) if (Plain(parent.GetChild(i).name) == name) return parent.GetChild(i);
         return null;
     }
 }
