@@ -14,7 +14,7 @@ namespace RekaCoop.Sync;
 public static class StorySync
 {
     private enum Kind : byte { Ready = 1, Flags = 2 }
-    private enum Table : byte { GameCondition = 1, GameValue = 2, MapCondition = 3, Heard = 4 }
+    private enum Table : byte { GameCondition = 1, GameValue = 2, MapCondition = 3, Heard = 4, Count = 5 }
 
     private static Dictionary<(Table, string), int> _sent;   // host: as last sent
     private static float _nextPoll;
@@ -42,6 +42,10 @@ public static class StorySync
             foreach (var kv in StaticMapCondition.syncedConditions) all[(Table.MapCondition, kv.Key)] = kv.Value ? 1 : 0;
         if (SaveLoad_HeardDialoguePerMap.heardDialogueIDs != null)
             foreach (var id in SaveLoad_HeardDialoguePerMap.heardDialogueIDs) all[(Table.Heard, id)] = 1;
+        // What quests count per map (stuck Lutki found, high stands destroyed): a static of each copy, counted where
+        // the story runs, which is the host.
+        if (CountUpAndDoSth_StaticallySynced.syncedCounts != null)
+            foreach (var kv in CountUpAndDoSth_StaticallySynced.syncedCounts) all[(Table.Count, kv.Key)] = kv.Value;
         return all;
     }
 
@@ -135,6 +139,14 @@ public static class StorySync
             case Table.MapCondition:
                 if (StaticMapCondition.syncedConditions.TryGetValue(id, out var mc) && mc == (value != 0)) return false;
                 StaticMapCondition.ChangeCondition(id, value != 0);
+                return true;
+            case Table.Count:
+                var counts = CountUpAndDoSth_StaticallySynced.syncedCounts;
+                if (counts == null || (counts.TryGetValue(id, out var had) && had == value)) return false;
+                counts[id] = value;
+                // The number only: what reaching it sets off is the host's to run, and comes from there.
+                foreach (var c in Resources.FindObjectsOfTypeAll<CountUpAndDoSth_StaticallySynced>())
+                    if (c != null && c.gameObject.scene.IsValid() && c.synchronizationId == id) c.count = value;
                 return true;
             case Table.Heard:
                 if (SaveLoad_HeardDialoguePerMap.HasHeard(id) == (value != 0)) return false;
