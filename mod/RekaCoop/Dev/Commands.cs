@@ -969,6 +969,18 @@ internal static class Commands
             return string.Join("; ", Resources.FindObjectsOfTypeAll<LeshyApprovalHelper>().Where(h => h.gameObject.scene.IsValid()).Select(h => $"{h.taskType} {(h.gameObject.activeInHierarchy ? "+" : "-")} {Sync.ScenePath.Of(h.transform)} @{h.transform.position}"));
         if (a[0] == "leshy")
             return $"favours={LeshyApproval.GetPoisCompletedInLeshysFavour()} hares={LeshyApproval.freedHares} deer={LeshyApproval.charmedDeer} lutki={LeshyApproval.helpedLutki} stuckLutki={LeshyApproval.helpedStuckLutki} offering={LeshyApproval.madeOffering} highStand={LeshyApproval.destroyedHighStand} mara={LeshyApproval.helpedMara} felled={LeshyApproval.treesFelled} reforested={LeshyApproval.treesReforested} forbidden={LeshyApproval.treeFellForbidden}";
+        if (a[0] == "counts")   // counts [part of id]: the game's synced counters (quests that want N of something), and who counts them
+        {
+            var sb = new System.Text.StringBuilder("synced:");
+            var d = CountUpAndDoSth_StaticallySynced.syncedCounts;
+            if (d != null) foreach (var kv in d) if (a.Length < 2 || kv.Key.IndexOf(a[1], StringComparison.OrdinalIgnoreCase) >= 0) sb.Append($" {kv.Key}={kv.Value}");
+            foreach (var c in Resources.FindObjectsOfTypeAll<CountUpAndDoSth_StaticallySynced>())
+            {
+                if (!c.gameObject.scene.IsValid() || (a.Length > 1 && (c.synchronizationId ?? "").IndexOf(a[1], StringComparison.OrdinalIgnoreCase) < 0)) continue;
+                sb.Append($"; {c.synchronizationId} count={c.count}/{c.maxCount} now={c.GetCurrentValue()} {(c.gameObject.activeInHierarchy ? "+" : "-")}{c.transform.root.name}/{c.name}");
+            }
+            return sb.ToString();
+        }
         if (a[0] == "items")
         {
             // items [part of id]: item types the game knows, with what kind of food each is

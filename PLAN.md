@@ -217,3 +217,21 @@ generated quest of each task family on the first map (M2 to M4, M10), then phase
   copy until claimed (the open item above, now easy to hit); ActiveSync skips roots whose name repeats, so
   repeated places rely on PoiSync alone. Olga's PC (paused by the user since): host-led and shared playthroughs
   pass with the new travel; guest-led failed only "the bones are gone" (25 of 28 after three laps; now five).
+- 2026-11-11 (evening) **Suite about twice as fast; playtest fixes; the Lutki elder's quests.** A playthrough of all
+  14 steps now takes 21 to 23 minutes (was about 29 for 11): dev `talkthrough` (the game clicks a talk through),
+  commands picked up every frame and matched whole, condition waits, teleports checked. The speed exposed races
+  in the script, each fixed there: acting before a tutorial prompt is up, a villager's call on leaving the
+  village, a teleport undone by a talk just ending, `say`/`interact` not counting as the host's own press. With
+  those: guest-led passed twice and shared once on Olga's PC, shared once here; host-led not yet clean (result
+  pending on Olga's PC). Runs are split between the PCs now, never the same playthrough on both.
+  Mod fixes: a guest's interaction runs on the host past an open window there (`StoryInteract.Run`); while the
+  host drives the hut the driver leads every talk; the travel question is not mirrored to guests; built pieces'
+  per-copy time stamp is left out of scene paths (the chair; not verified by hand).
+  The elder Lutki (dev `say Elder`): "Can I help you?" gives the high-stands quest; "What are you doing here?"
+  the beekeeper's log hive (helpedLutki); "Are there many of you?" then "Crushed and burned? ..." starts the
+  stuck-Lutki quest. Dev `counts`: pulling a Lutki out raises `StuckLutki_FoundStuckLutki` only;
+  `poi_LutkiStuckInLogPile_numberOfFreedLutki` (0/3) stays 0, and the elder then says "there's more got stuck
+  again". The freed Lutki has a `BirdInteraction` (`BirdsHolding_01`): most likely the bird tool has to be used on
+  it before it counts as freed. Not tried. Also found: `CountUpAndDoSth_StaticallySynced.syncedCounts` is a
+  static per copy and is not sent to guests (host 3, guest 0 after three pulls); the host runs the story so
+  nothing broke, but a guest's copy has the wrong counts. To sync with the other flags (StorySync).
