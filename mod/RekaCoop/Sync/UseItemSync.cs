@@ -35,7 +35,7 @@ internal static class UseItemSync
         else if (t.GetComponent<UseItemInteractArea>() is { } area && area.interacts != null && index < area.interacts.Count) u = area.interacts[index];
         if (u == null) { Plugin.Logger.LogWarning($"UseItem: {NameTags.NameOf(player)} finished spot {index} at {ScenePath.Of(t)}, not found here"); return; }
         if (u.solved) return;
-        DialogueSync.NoteRequest(player, 10f);
+        DialogueSync.NoteRequest(player, 10f, act: true);
         SolveFor(u, player);
         Plugin.Logger.LogInfo($"UseItem: {NameTags.NameOf(player)} finished spot {index} at {ScenePath.Of(t)}; {(u.solved ? "done here too" : "NOT done here")}");
     }

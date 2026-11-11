@@ -66,7 +66,7 @@ internal static class StoryInteractHooks
     {
         // The host pressed the key itself: whatever talk this starts is the host's, even if a guest walked through some
         // detector moments ago (seen: a guest outside the yard led the host's talk with the old woman).
-        if (!StoryInteract.Running && CoopDriver.Session is { Role: Net.Role.Host, IsConnected: true }) DialogueSync.NoteRequest(DialogueSync.Me, 10f);
+        if (!StoryInteract.Running && CoopDriver.Session is { Role: Net.Role.Host, IsConnected: true }) DialogueSync.NoteRequest(DialogueSync.Me, 10f, act: true);
         return StoryInteract.Local(__instance);
     }
 

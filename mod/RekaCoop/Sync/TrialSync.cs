@@ -416,6 +416,8 @@ internal static class TrialHooks
     internal static bool Heard(TasksTracker t, byte handler, int step, string name)
     {
         if (!WorldSync.IsGuest || TrialSync.Applying || WorldTransfer.LoadingHostWorld) return true;
+        // Bones dissolve on the host's say only (BoneSync); what this copy shows of it is not a second bone.
+        if (name == "OnDissolvedSingleBone") return false;
         Plugin.Logger.LogInfo($"Trials: {name} here; the host's tracker handles it");
         Intents.Send(Intents.Kind.TrackerEvent, t, args: w => { w.Put(handler); w.Put(step); });
         return false;

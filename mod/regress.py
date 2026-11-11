@@ -1,3 +1,4 @@
+import math
 """Scripted co-op regression run (PLAN.md phase 0).
 
 Starts `play` (host) and `client` (guest) on a copy of a fixture save in its own save folder, drives a scenario with
@@ -580,10 +581,207 @@ def cleanse(run, leader):
     for inst in (HOST, GUEST): dismiss(inst)
 
 
+def finish_any(lead, other):
+    """Clicks a talk to its end whoever leads it: the leader of the step first, then the other."""
+    return finish_talk(lead, 40) or finish_talk(other, 40)
+
+
+def count(log, what): return log.count(what)
+
+
+def egg(run, leader):
+    """After the rings: the big egg from the old woman's house, carried to the site, put into the oven."""
+    lead, other = (HOST, GUEST) if leader == "host" else (GUEST, HOST)
+    for inst in (HOST, GUEST): dismiss(inst)
+    mark = len(read_log(HOST))
+    cmd(other, "tp 45 -35 5"); cmd(lead, "tp 78.5 12 4.5")
+    time.sleep(4)
+    r = cmd(lead, "interact Ritual_Egg")
+    run.check("the egg is picked up", "interacted with" in r, r[:160])
+    time.sleep(4)
+    run.check("the host knows who carries the egg", "Ritual_Egg" in cmd(HOST, "carry"), cmd(HOST, "carry")[:120])
+    cmd(lead, "tp 34 -30 5")
+    run.check("her talk about the egg started on the host", until(lambda: talking(HOST), 15))
+    run.check("that talk ended", finish_talk(lead))
+    time.sleep(4)
+    tasks_done(run, 9, f"the {leader} brought the egg")
+    walk(lead, 29.5, -27, 10)
+    r = cmd(lead, "interact RitualEggSpot")
+    run.check("the egg is put into the oven", "interacted with" in r, r[:160])
+    run.check("she speaks once it is in", until(lambda: talking(HOST), 15))
+    run.check("that talk ended", finish_talk(lead))
+    time.sleep(5)
+    tasks_done(run, 10, "the egg is in the oven")
+    for inst in (HOST, GUEST):
+        run.check(f"{inst}: nobody carries the egg any more", "nothing carried" in cmd(inst, "carry"), cmd(inst, "carry")[:120])
+    log = read_log(HOST)[mark:]
+    run.check("the host placed the egg once", count(log, "Ritual: PlacedEgg") == 1, str(count(log, "Ritual: PlacedEgg")))
+    for inst in (HOST, GUEST): dismiss(inst)
+
+
+def pack_count(inst, item):
+    m = re.search(r"(\d+) " + item + r"\b", cmd(inst, "inv"))
+    return int(m.group(1)) if m else 0
+
+
+def offerings(run, leader):
+    """Honeycomb into the first bowl, the walk to the next, grain (gathered by her house) into the second."""
+    lead, other = (HOST, GUEST) if leader == "host" else (GUEST, HOST)
+    for inst in (HOST, GUEST): dismiss(inst)
+    mark = len(read_log(HOST))
+    honey = pack_count(HOST, "Item_Collected_Tier1_Honeycomb")
+    cmd(other, "tp 45 -35 5"); cmd(lead, "tp 29 -29 4")
+    time.sleep(4)
+    r = cmd(lead, "interact honeycombs_bunch")
+    run.check("honeycomb goes into the first bowl", "interacted with" in r, r[:160])
+    run.check("she speaks about the next bowl", until(lambda: talking(HOST), 15))
+    run.check("that talk ended", finish_any(lead, other))
+    for inst in (HOST, GUEST):
+        n = pack_count(inst, "Item_Collected_Tier1_Honeycomb")
+        run.check(f"{inst}: the shared pack paid one honeycomb", n == honey - 1, f"{honey} before, {n} now")
+    # She walks to the second bowl and calls from there; nobody set that talk off.
+    run.check("she calls from the second bowl", until(lambda: talking(HOST), 90, 2))
+    run.check("that talk ended", finish_any(other if leader == "guest" else lead, lead if leader == "guest" else other))
+    cmd(lead, "tp 85 4 4")
+    time.sleep(4)
+    for _ in range(3):
+        cmd(lead, "collect Grain")
+        time.sleep(2.5)
+    run.check("grain is in the shared pack", all(pack_count(i, "Item_Collected_Tier0_Grain") == 3 for i in (HOST, GUEST)), cmd(HOST, "inv")[:200])
+    cmd(lead, "tp 27 -24 4")
+    time.sleep(4)
+    r = cmd(lead, "interact grain_bunch")
+    run.check("grain goes into the second bowl", "interacted with" in r, r[:160])
+    run.check("she speaks once both are filled", until(lambda: talking(HOST), 15))
+    run.check("that talk ended", finish_any(lead, other))
+    time.sleep(5)
+    tasks_done(run, 11, "both offerings are placed")
+    log = read_log(HOST)[mark:]
+    run.check("the host counted two offerings", count(log, "Ritual: PlacedSingleOffering") == 2, str(count(log, "Ritual: PlacedSingleOffering")))
+    run.check("and all of them once", count(log, "Ritual: PlacedAllOfferings") == 1, str(count(log, "Ritual: PlacedAllOfferings")))
+    for inst in (HOST, GUEST): dismiss(inst)
+
+
+def dissolved(inst):
+    m = re.search(r"amountDissolved=([\d.]+)", cmd(inst, "fields BoneDissolver"))
+    return float(m.group(1)) if m else -1.0
+
+
+def bones(run, leader):
+    """The talk that hands over the Svarog charm, then the bones dissolved by walking past them with it. Only the
+    leader walks; the other stands away with empty hands."""
+    lead, other = (HOST, GUEST) if leader == "host" else (GUEST, HOST)
+    for inst in (HOST, GUEST): dismiss(inst)
+    mark = len(read_log(HOST))
+    cmd(other, "tp 60 -30 5"); cmd(lead, "tp 28 -22 4")
+    time.sleep(4)
+    r = cmd(lead, "interact InteractDialogue_OfferingComplete")
+    run.check("she is talked to", "interacted with" in r, r[:160])
+    run.check("her talk started on the host", until(lambda: talking(HOST), 10))
+    run.check("that talk ended", finish_talk(lead))
+    time.sleep(5)
+    tasks_done(run, 12, f"the {leader} talked to her")
+    for inst in (HOST, GUEST):
+        run.check(f"{inst}: has the charm", "SvarogCharm" in cmd(inst, "equip"), cmd(inst, "equip")[:160])
+    # A talk gathers everyone beside the starter: away again, and with empty hands, so only the leader's charm counts.
+    cmd(other, "tp 60 -30 5"); cmd(other, "equip 0")
+    if "holding SvarogCharm" not in cmd(lead, "equip"):
+        m = re.search(r"(\d+) SvarogCharm", cmd(lead, "equip"))
+        if m: cmd(lead, f"equip {m.group(1)}")
+    done = False
+    for k in range(24):
+        a = k * math.pi / 4
+        cmd(lead, f"tp {27 + 4 * math.cos(a):.1f} {-27 + 4 * math.sin(a):.1f} 4.5")
+        time.sleep(4)
+        if trial_tasks(HOST).startswith("x" * 14): done = True; break
+    run.check("the bones are gone", done, f"host {dissolved(HOST)}, guest {dissolved(GUEST)}")
+    run.check("both copies show the same bones gone", until(lambda: abs(dissolved(HOST) - dissolved(GUEST)) < 0.01, 20, 2), f"host {dissolved(HOST)}, guest {dissolved(GUEST)}")
+    if until(lambda: talking(HOST), 10): run.check("her talk after the bones ended", finish_any(lead, other))
+    time.sleep(4)
+    tasks_done(run, 13, "every bone is dissolved")
+    log = read_log(HOST)[mark:]
+    top = max([int(x) for x in re.findall(r"tutorial_bonesDissolved=(\d+)", log)] or [0])
+    run.check("no bone was counted twice", 0 < top <= 28, str(top))
+    run.check("the host finished the bones once", count(log, "Ritual: DissolvedAllBones") == 1, str(count(log, "Ritual: DissolvedAllBones")))
+    for inst in (HOST, GUEST): dismiss(inst)
+
+
+def embers(run, leader):
+    """Her talk about the embers, the living embers from her fireplace carried to her, handed over."""
+    lead, other = (HOST, GUEST) if leader == "host" else (GUEST, HOST)
+    for inst in (HOST, GUEST): dismiss(inst)
+    mark = len(read_log(HOST))
+    cmd(other, "tp 45 -35 5"); cmd(lead, "tp 34 -30 5")
+    time.sleep(4)
+    r = cmd(lead, "interact InteractDialogue_EmbersStart")
+    run.check("she is talked to", "interacted with" in r, r[:160])
+    run.check("her talk started on the host", until(lambda: talking(HOST), 10))
+    run.check("that talk ended", finish_talk(lead))
+    time.sleep(4)
+    # The fire tool's unlock popup: until it is answered nothing can be interacted with on that copy.
+    for inst in (HOST, GUEST): dismiss(inst)
+    cmd(other, "tp 45 -35 5"); cmd(lead, "tp 79.5 9 4.5")
+    time.sleep(4)
+    r = cmd(lead, "interact CarriableEmbers")
+    time.sleep(4)
+    run.check("the embers are picked up", "CarriableEmbers" in cmd(HOST, "carry"), r[:120] + " / " + cmd(HOST, "carry")[:120])
+    tasks_done(run, 14, f"the {leader} has the embers")
+    cmd(lead, "tp 40 -29 5")
+    time.sleep(4)
+    walk(lead, 42.5, -27, 8)
+    run.check("she asks for them", until(lambda: talking(HOST), 15))
+    run.check("that talk ended", finish_talk(lead))
+    time.sleep(3)
+    cmd(lead, "tp 40 -28.5 4")
+    time.sleep(3)
+    cmd(lead, "fields POI_PlayerAreaTrigger@InteractDialogue_GiveEmbers invoke TryToInteract")
+    run.check("handing them over starts her talk", until(lambda: talking(HOST), 10))
+    run.check("that talk ended", finish_talk(lead))
+    time.sleep(5)
+    tasks_done(run, 15, "she has the embers")
+    for inst in (HOST, GUEST):
+        run.check(f"{inst}: nobody carries the embers any more", "nothing carried" in cmd(inst, "carry"), cmd(inst, "carry")[:120])
+    log = read_log(HOST)[mark:]
+    for step in ("BroughtEmbers", "GaveEmbersToBaba"):
+        run.check(f"the host ran {step} once", count(log, "Ritual: " + step) == 1, str(count(log, "Ritual: " + step)))
+
+
+def finale(run, leader):
+    """The ritual's cutscene and the house standing up, her words, the house told to sit down, her last talk."""
+    lead, other = (HOST, GUEST) if leader == "host" else (GUEST, HOST)
+    mark = len(read_log(HOST))
+    run.check("the house stands and she speaks", until(lambda: talking(HOST), 120, 2))
+    run.check("that talk ended", finish_any(lead, other))
+    time.sleep(4)
+    for inst in (HOST, GUEST): dismiss(inst)
+    cmd(other, "tp 45 -35 5"); cmd(lead, "tp 29 -25 4.5")
+    time.sleep(4)
+    r = cmd(lead, "interact Interact_SitLegsDown")
+    run.check("the house is told to sit", "interacted with" in r, r[:160])
+    run.check("those words started on the host", until(lambda: talking(HOST), 10))
+    run.check("they ended", finish_talk(lead))
+    time.sleep(6)
+    tasks_done(run, 16, "the ritual is finished")
+    run.check("her last talk started", until(lambda: talking(HOST), 30, 2))
+    run.check("that talk ended", finish_any(HOST, GUEST))
+    time.sleep(6)
+    if talking(HOST): run.check("her parting line ended", finish_any(HOST, GUEST))
+    for inst in (HOST, GUEST):
+        dismiss(inst)
+        run.check(f"{inst}: the ritual counts as finished", "ritualFinished=True" in cmd(inst, "status"), cmd(inst, "status")[:160])
+        run.check(f"{inst}: can build", "HouseBuilding" in cmd(inst, "status"), cmd(inst, "status")[-120:])
+    log = read_log(HOST)[mark:]
+    run.check("the host finished the ritual once", count(log, "Ritual: RitualFinished") == 1, str(count(log, "Ritual: RitualFinished")))
+    for inst in (HOST, GUEST): dismiss(inst)
+
+
 SCENARIOS = {"door": ("pre-door-1.0.32", door), "yard": ("after-door-1.0.32", yard),
              "lutki": ("after-yard-1.0.32", lutki), "home": ("talisman-1.0.32", home),
              "villager": ("talisman-1.0.32", villager),
-             "chicken": ("pine-1.0.40", chicken), "cleanse": ("cleanse-1.0.40", cleanse)}
+             "chicken": ("pine-1.0.40", chicken), "cleanse": ("cleanse-1.0.40", cleanse),
+             "egg": ("egg-1.0.40", egg), "offerings": ("offerings-1.0.40", offerings),
+             "bones": ("charm-1.0.40", bones), "embers": ("embers-1.0.40", embers),
+             "finale": ("finale-1.0.40", finale)}
 
 
 def between_checks(run, name):

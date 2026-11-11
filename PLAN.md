@@ -46,16 +46,22 @@ The game is one hand-scripted tutorial (20 beats, table in the survey; 1 to 4 do
 generic parts (35 quest task types, about 116 place types). So the rest of phases 3 and 4 is these mechanisms, each
 proved on the tutorial beat that first needs it, not a plan per scene:
 
-- [ ] M1 story/local split of pickup and placement events (AreaSync's split, generalized). Beats 6, 11, 14.
+- [x] M1 story/local split of pickup and placement events (`CarryStory`: a carriable's pickup/drop events, a spot
+      something carried is put into, items from the pack put into a place). Proved on the chicken, egg, offerings, embers.
 - [ ] M2 Interact intent for every story PlayerDetection, including ones wired at run time. Beat 15, quests.
 - [ ] M3 guest silence list (quest tasks, QuestRunner, tracker evaluation, place events, travel triggers). Tracker part
       done in protocol 58; the rest as beats and the first generated quest need them.
-- [ ] M4 nearest-player swap around story Updates on the host. Beat 16, quests.
-- [ ] M5 a guest's carry/place/ritual player events as an intent. Beats 11, 12.
+- [~] M4 story that looks for the local player every frame. The ritual's bones are done the other way round
+      (`BoneSync`: the guest's copy looks, a bone it would start is an intent, the host starts its own); the host
+      can't see what tool a guest holds when the tool lives in a place, not on the player. Quests may still need the swap.
+- [x] M5 a guest's carry/place/ritual player events as an intent (pickup and drop through CarrySync, `Place`).
 - [ ] M6 presentation of host story events on guests (music, ritual statics). Beat 18.
-- [ ] M7 AreaSync adapters for the other physics triggers. Beats 10, 12.
-- [ ] M8 UseItem intent (pine branch, lantern reveal, watering, fire). Beats 9, 13.
-- [ ] M9 ritual advance entry. Beats 12 to 17.
+- [ ] M7 AreaSync adapters for the other physics triggers. Not needed through the ritual: `POI_PlayerAreaTrigger`
+      (handing over the embers) only starts a dialogue, which a guest's copy already asks the host for.
+- [x] M8 UseItem intent (`UseItemSync`: a spot finished with a tool; the rings swept with the pine branch).
+      Lantern reveal, watering and fire use the same spots but are not exercised yet.
+- [x] M9 the ritual advances on the host only (`RitualSync`); every step from the chicken to the house sitting
+      down counted once in guest-led and host-led runs.
 - [ ] M10 hand-in intent for item-giving screens. First chapter after the tutorial.
 - [~] Talks as one session on every copy. Done for story talks (protocol 60): the host sends a whole dialogue once
       (`Start`) and then only the line number (`Index`); a guest runs it as one dialogue of its own, lines advanced by
@@ -68,6 +74,14 @@ proved on the tutorial beat that first needs it, not a plan per scene:
 - [ ] Pickups can be taken twice when two players take the same one within a second (5 wood from 4 planks). Part of M1.
 - [x] Regression speed: one continuous playthrough per leader, waits on conditions (done: 55 min to 15 for beats 1 to 8,
       both leaders). Scenarios still run alone from their own fixtures. Later, with the user's go-ahead: Olga's PC over SSH.
+
+- [ ] An unanswered popup on the host (a tool unlock) blocks every interaction there, including the ones the host runs
+      for a guest's press: nothing happens and nothing says why. Seen in scripted runs (input off); in real play the
+      host just has to click OK, but the guest can't know. Run a guest's interaction past the block, or tell the guest.
+- [ ] Guests still send `GenericPOICondition` changes to the host. The host now waits 2 s and only takes a guest's
+      word if its own copy has not got there (it used to run what hangs on the condition twice). Remove once the
+      Lutki's planks no longer need it (phase 4).
+- [ ] Who leads a talk nobody set off (she walks to the next bowl and calls): the host. A guest can't click it on.
 
 Order: tutorial beats 5 to 20 in sequence with a regression scenario each (that covers M1, M5 to M9), then one
 generated quest of each task family on the first map (M2 to M4, M10), then phase 4 removals, then phase 5.
@@ -109,3 +123,15 @@ generated quest of each task family on the first map (M2 to M4, M10), then phase
   walking into a trigger with story on it is noted as the host's own step, so a guest's last walk into some detector
   (the Lutki wander through theirs once a second) no longer leads the talk the host sets off and pulls the host 100 m.
   Chained regression passes both ways (156 checks, 15.8 min).
+- 2026-11-10 **Second test bed, game 1.0.40.** Olga's PC runs the same suite over SSH (`mod/olga.ps1`: deploy, run,
+  wait, stop, allow; one-click stop on both desktops and in taskdeck). `mod/sync-game.ps1` relinks the copies after a
+  game patch (long paths). The mod needed no change for 1.0.40.
+- 2026-11-10 **The whole ritual, tutorial tasks 5 to 16** (protocols 61 to 64). New: `CarryStory` (what picking up,
+  putting down and placing set off runs on the host for the guest who did it), `RitualSync`, `UseItemSync`, `BoneSync`,
+  the `Place` intent, a line-of-sight detector taken on a guest's word, places host to guests only (`PoiSync`), a
+  guest's condition deferred on the host, deliberate acts outranking detector walk-ins for who leads a talk, a tool's
+  own parts and run-time clones left out of the on/off comparison. Villager talks run as one session too (merged
+  from a side branch, dialogue stages 5 and 7). Regression scenarios `villager`, `chicken`, `cleanse`, `egg`,
+  `offerings`, `bones`, `embers`, `finale` with fixtures `*-1.0.40`; `--start=<fixture>` leaves both games up there.
+  After the ritual the building lesson is skipped in co-op and both players can build. Left: task 18 (leaving the
+  map in the house), the three open items above, generated quests.

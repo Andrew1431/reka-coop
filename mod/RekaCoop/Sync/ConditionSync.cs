@@ -31,6 +31,7 @@ public static class ConditionSync
     public static void ResetLocal()
     {
         Last.Clear();
+        Waiting.Clear();
         _locks = null;
         _doorsSent.Clear();
         _doorsReadySent = false;
@@ -44,8 +45,17 @@ public static class ConditionSync
     private static bool _doorsReadySent;
     private static float _nextDoors;
 
+    private const float GuestWordWait = 2f;
+    private static readonly Dictionary<string, (bool value, int by, float due)> Waiting = new();
+
     public static void Tick(CoopSession session)
     {
+        if (Waiting.Count > 0)
+            foreach (var kv in Waiting.Where(k => UnityEngine.Time.unscaledTime >= k.Value.due).ToList())
+            {
+                Waiting.Remove(kv.Key);
+                Apply(session, kv.Key, kv.Value.value, kv.Value.by);
+            }
         if (!session.IsConnected || UnityEngine.Time.unscaledTime < _nextDoors) return;
         _nextDoors = UnityEngine.Time.unscaledTime + 1f;
         if (session.Role == Role.Client)
@@ -208,8 +218,21 @@ public static class ConditionSync
         if (kind != Kind.Condition) { OnGate(session, r, kind); return; }
         var path = r.GetString();
         bool value = r.GetBool();
-        if (session.Role == Role.Host) Send(session, path, value, from.PlayerId);
+        if (session.Role == Role.Host)
+        {
+            // What made it change on the guest's copy usually changes it here too a moment later (a ring's last spot
+            // swept: the spot comes as an intent and the host's ring sets its own condition). Setting it now as well
+            // would run what hangs on it twice, so a guest's word waits and only counts if the host's copy stays behind.
+            if (!(Last.TryGetValue(path, out var has) && has == value)) Waiting[path] = (value, from.PlayerId, UnityEngine.Time.unscaledTime + GuestWordWait);
+            return;
+        }
+        Apply(session, path, value, from.PlayerId);
+    }
+
+    private static void Apply(CoopSession session, string path, bool value, int by)
+    {
         if (Last.TryGetValue(path, out var was) && was == value) return;
+        if (session.Role == Role.Host) Send(session, path, value, by);
         var c = ScenePath.Resolve(path)?.GetComponent<GenericPOICondition>();
         if (c == null) { Plugin.Logger.LogInfo($"Conditions: no {path} here"); return; }
         Last[path] = value;
@@ -218,7 +241,7 @@ public static class ConditionSync
         {
             if (value) c.SetConditionTrue();
             else c.SetConditionFalse();
-            Plugin.Logger.LogInfo($"Conditions: {NameTags.NameOf(from.PlayerId)} set {path} {value}");
+            Plugin.Logger.LogInfo($"Conditions: {NameTags.NameOf(by)} set {path} {value}");
         }
         catch (System.Exception e) { Plugin.Logger.LogWarning($"Conditions: setting {path} failed: {e.Message}"); }
         finally { Replaying = false; }

@@ -51,6 +51,7 @@ public static class DialogueSync
 
     // Host: who leads the conversation on screen (-1 none), and the last guest request that may be starting one.
     private static int _leader = -1, _requestedBy = -1;
+    private static bool _requestAct;
     private static float _requestedAt = -10, _nextAt;
     private static bool _remotePick;
     private static Vector3? _talkAt;   // where the conversation is (what a guest asked for, or the speaker's head)
@@ -562,10 +563,23 @@ public static class DialogueSync
 
     // Host: a talk about to start was set off by this player (they walked into a player detector). The talker may walk
     // over first, so the request holds a while longer than a guest's ask.
-    internal static void NoteRequest(int playerId, float hold)
+    // `act`: something the player did on purpose (picked up, put down, used a tool, pressed interact). While that is
+    // fresh, someone merely walking into a detector doesn't take the talk it sets off away from them (seen: the host
+    // standing by the old woman led the talk that a guest's chicken in the nest started).
+    internal static void NoteRequest(int playerId, float hold, bool act = false)
     {
+        if (!act && _requestAct && _requestedBy >= 0 && playerId != _requestedBy && Time.unscaledTime - _requestedAt < RequestWindow) return;
+        _requestAct = act;
         _requestedBy = playerId;
         _requestedAt = Time.unscaledTime + hold;
+    }
+
+    // Host: an NPC's AI is starting a talk for the player it sees. An AI that sees nobody (a chicken settling in the nest
+    // a guest put it in) leaves a guest's fresh request standing: what that guest did set it off.
+    internal static void NoteAiStart(int seen)
+    {
+        if (seen < 0 && _requestedBy >= 0 && Time.unscaledTime - _requestedAt < RequestWindow) return;
+        NoteRequest(seen >= 0 ? seen : Me, 0f);
     }
 
     private static void Begin(CoopSession session)
@@ -580,6 +594,7 @@ public static class DialogueSync
             _leader = Me;
         }
         _requestedBy = -1;
+        _requestAct = false;
         Plugin.Logger.LogInfo($"Dialogue: conversation led by {NameTags.NameOf(_leader)}");
         Gather(session);
     }
@@ -1423,7 +1438,7 @@ internal static class DialogueHooks
         {
             // An NPC's AI started it for the player it sees (ActingPlayer): theirs to lead.
             if (ActingPlayer.InAi && Intents.Actor < 0 && CoopDriver.Session is { Role: Role.Host, IsConnected: true })
-                DialogueSync.NoteRequest(ActingPlayer.Current >= 0 ? ActingPlayer.Current : DialogueSync.Me, 0f);
+                DialogueSync.NoteAiStart(ActingPlayer.Current);
             return true;
         }
         if (DialogueSync.Personal(__instance)) return true;
