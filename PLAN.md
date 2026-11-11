@@ -165,3 +165,21 @@ generated quest of each task family on the first map (M2 to M4, M10), then phase
   Dev commands `items [part]` and `travelui [food|pick|confirm|dest|go|open|close]`. Olga's PC, build of this
   morning plus the first travel scenario: guest-led and shared playthroughs pass, host-led failed only on a
   guest's request for an old-map deer that arrived as the host left (the check now starts at the guest's arrival).
+- 2026-11-11 **First favours to the forest spirit (trial 1), fixture `leshy-1.0.40`.** The map's quest machinery is
+  `QuestGenerator` (10), `FoodVillagerLogic` (5), `POI_Logic_RequestItems` (2) and small places; no `QuestRunner`
+  on this map. Favours are `LeshyApproval` statics set by `LeshyApprovalHelper.CompleteTask` (dev `leshy`,
+  `leshy all`): freedHares, destroyedHighStand, helpedStuckLutki, helpedLutki, charmedDeer, madeOffering,
+  helpedMara. Works in co-op, host-led, guest-led and shared: trapped hares (scenario `hares`; the first favour
+  brings the spirit's first words), three high stands destroyed (tried by hand: guest, host, guest; no scenario
+  yet), three stuck Lutki pulled out (scenario `stuck`). Fixed for the stuck Lutki (M2, first part):
+  `StoryInteract` now also sends a guest's press to the host when it counts, solves or pays out
+  (`CountUpAndDoSth_StaticallySynced`, `PoiQuestInterface`, `POI_Loot`, `LeshyApprovalHelper`, `QuestPageHelper`);
+  `ScenePath` puts the place's id on a root that is a place (`POI_TrappedHare(Clone)#<id>[0]`), since a generated
+  map has the same place several times and the host freed the wrong Lutki; a guest's press on something the host
+  has already completed no longer switches it back on (`DialogueSync.Admit`); a guest's visit to a place is
+  recorded in the host's `PoiMapHistoryTracker`. Open: freeing all three stuck Lutki did not set
+  helpedStuckLutki (a further step, not found yet); the deer favour (the dev interact reached a deer 29 m away
+  and nothing counted); the loot card for something a guest did opens on the host too and blocks the host's
+  copy until claimed (the open item above, now easy to hit); ActiveSync skips roots whose name repeats, so
+  repeated places rely on PoiSync alone. Olga's PC (paused by the user since): host-led and shared playthroughs
+  pass with the new travel; guest-led failed only "the bones are gone" (25 of 28 after three laps; now five).

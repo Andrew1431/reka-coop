@@ -160,6 +160,13 @@ public static class TrialSync
             var s = RekaCoop.Sync.Find.One<StatsTracker>();
             if (s == null) return;
             int added = ChangeStats(s, deltas, (a, b) => a + b);
+            // A place a guest came to is a place visited on this map: the history of places per map (which the next
+            // maps are made from) is the host's, and the guest's copy follows it.
+            var history = RekaCoop.Sync.Find.One<PoiMapHistoryTracker>();
+            if (history != null)
+                foreach (var (key, d) in deltas)
+                    if (d > 0 && key.StartsWith("v:"))
+                        try { history.RecordVisit(key[2..]); } catch (System.Exception e) { Plugin.Logger.LogWarning($"Trials: recording the visit to {key[2..]} failed: {e.Message}"); }
             try { Tracker?.Evaluate(); } catch (System.Exception e) { Plugin.Logger.LogWarning($"Trials: evaluating after stats failed: {e.Message}"); }
             Plugin.Logger.LogInfo($"Trials: player {from.PlayerId}'s stats: {added} of {n} added");
         }

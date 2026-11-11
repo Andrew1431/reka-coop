@@ -190,12 +190,30 @@ public static class Find
 // same AI id. The place's own id comes first. Cached per object, so it stays the same after the game reparents it
 // (a carried animal moves into the player's rig).
 // Names with sibling indices up to the root: the same object has the same path on every copy of the world.
+// A generated map has the same place several times over (five hare traps, three stuck Lutki), each a root of the same
+// name: a root that is a place carries the place's id, "POI_TrappedHare(Clone)#<id>[0]".
 public static class ScenePath
 {
+    private static readonly Dictionary<System.IntPtr, string> RootIds = new();
+
+    private static string RootId(Transform root)
+    {
+        if (RootIds.TryGetValue(root.Pointer, out var id)) return id;
+        if (RootIds.Count > 4000) RootIds.Clear();
+        var poi = root.GetComponent<POI_SaveLoad>();
+        id = poi != null ? poi.uniqueID : null;
+        if (string.IsNullOrEmpty(id)) return "";   // not cached: a place gets its id a little after it appears
+        return RootIds[root.Pointer] = id;
+    }
+
     public static string Of(Transform t)
     {
         var parts = new List<string>();
-        for (; t != null; t = t.parent) parts.Add($"{t.name}[{t.GetSiblingIndex()}]");
+        for (; t != null; t = t.parent)
+        {
+            string id = t.parent == null ? RootId(t) : "";
+            parts.Add(id.Length > 0 ? $"{t.name}#{id}[{t.GetSiblingIndex()}]" : $"{t.name}[{t.GetSiblingIndex()}]");
+        }
         parts.Reverse();
         return string.Join("/", parts);
     }
@@ -213,13 +231,18 @@ public static class ScenePath
             int open = part.LastIndexOf('[');
             if (open < 0 || !int.TryParse(part[(open + 1)..], out int index)) return null;
             var name = part[..open];
-            at = i == 0 ? Root(name, index) : Child(at, name, index);
+            if (i == 0)
+            {
+                int hash = name.LastIndexOf('#');
+                at = hash > 0 ? Root(name[..hash], index, name[(hash + 1)..]) : Root(name, index, null);
+            }
+            else at = Child(at, name, index);
             if (at == null) return null;
         }
         return at;
     }
 
-    private static Transform Root(string name, int index)
+    private static Transform Root(string name, int index, string id)
     {
         Transform byName = null;
         for (int s = 0; s < UnityEngine.SceneManagement.SceneManager.sceneCount; s++)
@@ -229,6 +252,11 @@ public static class ScenePath
             foreach (var go in scene.GetRootGameObjects())
             {
                 if (go.name != name) continue;
+                if (id != null)
+                {
+                    if (RootId(go.transform) == id) return go.transform;
+                    continue;   // another place of the same kind: never the wrong one
+                }
                 if (go.transform.GetSiblingIndex() == index) return go.transform;
                 byName ??= go.transform;
             }

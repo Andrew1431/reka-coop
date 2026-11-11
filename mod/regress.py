@@ -163,7 +163,7 @@ def common_checks(run):
     def same():
         cats = [c.strip() for c in cmd(GUEST, "digest").splitlines()[0].split(";") if c.strip()]
         return cats and all(" same" in c for c in cats)
-    until(same, 32, every=4)
+    until(same, 48, every=4)
     d = cmd(GUEST, "digest").splitlines()[0]  # log lines written just after it follow
     cats = [c.strip() for c in d.split(";") if c.strip()]
     bad = [c for c in cats if " same" not in c]
@@ -708,7 +708,7 @@ def bones(run, leader):
             m = re.search(r"(\d+) SvarogCharm", cmd(who, "equip"))
             if m: cmd(who, f"equip {m.group(1)}")
     done = False
-    for k in range(24):
+    for k in range(40):   # five times round at most; a slow PC needs more than three
         a = k * math.pi / 4
         cmd(lead, f"tp {27 + 4 * math.cos(a):.1f} {-27 + 4 * math.sin(a):.1f} 4.5")
         if SPLIT: cmd(other, f"tp {27 - 4 * math.cos(a):.1f} {-27 - 4 * math.sin(a):.1f} 4.5")
@@ -946,13 +946,56 @@ def hares(run, leader):
     run.check("both copies have the same traps left", left[0] == left[1], str(left))
 
 
+def stuck(run, leader):
+    """Lutki stuck in the villagers' woodpiles, the same small place three times over on one map. Pulling one out is a
+    press of the key: it gives a little loot, counts towards the Lutki's quest and solves that place. The leader frees
+    the first and third, the other the second; each time it is the host's copy of that very Lutki that is freed, once."""
+    lead, other = (HOST, GUEST) if leader == "host" else (GUEST, HOST)
+    for inst in (HOST, GUEST): dismiss(inst)
+    spots = places(HOST, "StuckLutki_01(Clone)")
+    run.check("stuck Lutki are in the same places on both copies", spots == places(GUEST, "StuckLutki_01(Clone)"), f"{len(spots)} on the host")
+    if len(spots) < 3:
+        print("  (this map has fewer than three stuck Lutki; nothing more to do here)", flush=True)
+        return
+    mark = len(read_log(HOST))
+    for n, (who, away) in enumerate(((lead, other), (other, lead), (lead, other))):
+        x, y, z = spots[n]
+        at = len(read_log(HOST))
+        cmd(away, "tp 44 54 17")
+        for _ in range(3):   # a talk just ended may still pull a player back beside its starter
+            cmd(who, f"tp {x + 1.2:.1f} {z + 1.2:.1f} {y + 1:.1f}")
+            time.sleep(5)
+            here = pos(who)
+            if here and abs(here[0] - x) < 3 and abs(here[2] - z) < 3: break
+        r = first_line(cmd(who, "interact StuckLutki"))
+        near = re.search(r" at (\d+) m", r)
+        run.check(f"Lutki {n + 1} is pulled out by {who}", "interacted with" in r and near and int(near.group(1)) <= 3, r[:120])
+        ok = until(lambda: "Popups: sent the loot box" in read_log(HOST)[at:], 12)
+        run.check(f"the host pays out for Lutki {n + 1}", ok)
+        time.sleep(3)
+        for inst in (HOST, GUEST): dismiss(inst)   # the loot card; while it is up on the host nothing can be used there
+        click_through(who, away, 6)
+    # Which Lutki the host freed: its copy of each place changed (the host compares places in rounds, so this lags).
+    ids = lambda: set(re.findall(r"Places: StuckLutki_01\(Clone\) \(([0-9a-f-]+)\) changed", read_log(HOST)[mark:]))
+    until(lambda: len(ids()) >= 3, 90, 3)
+    run.check("three different Lutki were freed on the host", len(ids()) == 3, str(ids()))
+    log = read_log(HOST)[mark:]
+    run.check("three payouts, no more", count(log, "Popups: sent the loot box") == 3, str(count(log, "Popups: sent the loot box")))
+    packs = [first_line(cmd(i, "inv")).split("; money")[-1].split(" block kinds")[0] for i in (HOST, GUEST)]
+    run.check("the loot is in the shared pack on both", packs[0] == packs[1], f"{packs[0][-120:]} / {packs[1][-120:]}")
+    left = [len([l for l in cmd(i, "detections 400").splitlines() if "StuckLutki/Player Detection on=True" in l]) for i in (HOST, GUEST)]
+    for inst in (HOST, GUEST): cmd(inst, "tp 44 54 17")
+    time.sleep(4)
+
+
 SCENARIOS = {"door": ("pre-door-1.0.32", door), "yard": ("after-door-1.0.32", yard),
              "lutki": ("after-yard-1.0.32", lutki), "home": ("talisman-1.0.32", home),
              "villager": ("talisman-1.0.32", villager),
              "chicken": ("pine-1.0.40", chicken), "cleanse": ("cleanse-1.0.40", cleanse),
              "egg": ("egg-1.0.40", egg), "offerings": ("offerings-1.0.40", offerings),
              "bones": ("charm-1.0.40", bones), "embers": ("embers-1.0.40", embers),
-             "travel": ("hut-1.0.40", travel), "hares": ("leshy-1.0.40", hares)}
+             "travel": ("hut-1.0.40", travel), "hares": ("leshy-1.0.40", hares),
+             "stuck": ("leshy-1.0.40", stuck)}
 
 
 def between_checks(run, name):

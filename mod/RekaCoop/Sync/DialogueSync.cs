@@ -859,6 +859,14 @@ public static class DialogueSync
                 Plugin.Logger.LogInfo($"Dialogue: {NameTags.NameOf(player)} asked for {what} at {path}, which already ran here; ignored");
                 return null;
             }
+            // Something that is done here (a stuck Lutki the host has already freed, which the guest's copy still shows
+            // for a moment) stays done.
+            var station = t.GetComponent<CompletableStation>();
+            if (kind == Intents.Kind.Interact && station != null && station.isCompleted)
+            {
+                Plugin.Logger.LogInfo($"Dialogue: {NameTags.NameOf(player)} asked for {what} at {path}, which is done here; ignored");
+                return null;
+            }
             Plugin.Logger.LogInfo($"Dialogue: {NameTags.NameOf(player)} asked for {what} at {path}, off here; switched on for them: {SwitchOn(t)}");
         }
         _requestedBy = player;

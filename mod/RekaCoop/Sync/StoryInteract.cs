@@ -14,7 +14,13 @@ namespace RekaCoop.Sync;
 // calls, so ordinary pickups, carrying, stations and chests stay local.
 public static class StoryInteract
 {
-    private static readonly HashSet<string> StoryTargets = new() { "CollectibleJournal", "Poi_Tutorial_TeleportTalisman", "GivePlayerItemsHelper", "StandaloneDialogue" };
+    private static readonly HashSet<string> StoryTargets = new()
+    {
+        "CollectibleJournal", "Poi_Tutorial_TeleportTalisman", "GivePlayerItemsHelper", "StandaloneDialogue",
+        // What a generated place counts, solves and pays out with (a stuck Lutki freed: one of three, its loot, the place
+        // solved, the forest spirit's favour).
+        "CountUpAndDoSth_StaticallySynced", "PoiQuestInterface", "POI_Loot", "LeshyApprovalHelper", "QuestPageHelper",
+    };
     private static readonly Dictionary<System.IntPtr, bool> Known = new();
     private static readonly Dictionary<System.IntPtr, float> SentAt = new();
     internal static bool Running;
