@@ -434,3 +434,123 @@ walkto: stopped 120.8 m from the goal
 Cause as read from the code: the detector calls `DialogueSync.NoteRequest(guest, hold)`; `Begin` gives the next talk to
 `_requestedBy` while the request is fresh, whatever started the talk. This talk was started by the host walking into a
 trigger (`TutorialDialoguePiece.RunDialogue`, not inside an AI update), so nothing set the host as the requester.
+
+## 9. Implemented (2026-11-10): every dialogue as one session (stages 5, 7, parts of 6 and 8, protocol 61)
+
+Branch `worktree-agent-a2e3ef901c319e0c6`, commits `aa5427f`, `0ca3cd1` and the one that adds this section. Tested on the
+second PC (`mod/olga.ps1`), game 1.0.40, host `play` + guest `client`, fixture `talisman-1.0.32`. Test villager: Yullia,
+`Tutorial_POIs(Clone)/POI_HangingMan/NPC_03` (dev `facenpc POI_HangingMan`, `say POI_HangingMan`, `next`, `pick n`).
+
+### What the host's talk with her is (measured, `dlgtrace` on the host)
+
+| Step | Generation | Lines | Last line waits to run | Box |
+|---|---|---|---|---|
+| Greeting | 1 | 1 | `<OnLastLineRevealed>b__1` (branch) | stays up (`talk=True root=True`) under the options panel |
+| Pick "Tell me about Kopnik." | 3 | **3** | branch again | `StopTalkingAndCloseUI` at the pick, new dialogue in the same frame, root hidden 9 frames; up under the options again |
+| Pick "Goodbye" | 5 | 1 | `StopTalkAndCallOnFinished` | same close and reopen at the pick; closes at the end |
+
+So an answer can be several lines in one generation (this was "not found in reach" in section 7), and the game's own
+pick closes the box and opens the next one. One camera session for the whole talk (`Commit` at generations 3 and 5, no
+`BeginSession`).
+
+### What changed
+
+- **Host**: every dialogue goes whole (`Start`), whatever follows it; the `line by line` fallback for branches, options
+  and mid-talk joins is gone. `Start` now carries a passive flag and the speaker (head path, name), read from the
+  game's camera when the dialogue starts: the session it committed for that generation, else the proposal it holds;
+  none when the camera was given none. The separate `Camera` message is only sent with `dlgone off`.
+- **Guest, start**: every dialogue started here has an empty branch, built field by field (`DialogueSync.BranchTo`:
+  an empty `Nullable<DialogueBranch>`, then `value.action` and `hasValue` written at the offsets the class reports;
+  falls back to no branch with a warning if the fields aren't found). `isStayInUI` stays false.
+- **Guest, next dialogue** (`ChainNext`): a `Start` that arrives while a dialogue of the talk is on the box waits (at
+  most 0.4 s) until the box holds its last line's step, runs it (the empty branch) and starts the new dialogue in the
+  same frame, after `Activate` when it has a speaker. The box stays up and the camera commits on its live session.
+  If the box is not on its last line, or the step doesn't come, the box is closed and the dialogue started plainly.
+- **Guest, options**: the box stays on its last line under the panel, as on the host (before: closed).
+- **Guest starter's pick**: the game's own `OnOptionPicked` is not run on a guest who leads; the pick goes to the host
+  and only the panel closes. The game's own pick closed the box here (measured, first build), the answer then opened a
+  new one, and the camera would let go if the answer took longer than 0.1 s to arrive.
+- **Passive dialogues** go whole in the same `Start` (flag) and run on the guest's own timing; skipped while a real
+  talk is on screen, as before.
+- **Join mid-talk**: the host sends the joiner `Start` from the current line and the open options. A guest that is not
+  in the world yet keeps the dialogue and starts it when the host's `State` shows the host still on it. The same
+  rule replaces the old per-frame "the box closed here; starting again": it now needs the host's word.
+- A watcher whose options panel never opened is shown it again from `State` (before: the starter only).
+- Dev: `dlgone off` (host) still sends everything by the old `Line` / `Passive` / `Camera` path; `dlgcamstream off`
+  (per copy) switches the talk camera stream off there; `kick <id>` (host) drops a guest, who rejoins by itself.
+- `mod/regress.py`: scenario `villager` (fixture `talisman-1.0.32`; last in the chained run), with checks read from
+  `dlgtrace`: one dialogue here per dialogue on the host, the box never hidden inside a dialogue, the greeting up
+  under the options, one camera session.
+
+### Measured on the guest (`dlgtrace`, `campatch 2`), the talk above: greeting, pick 0, three lines, Goodbye
+
+| Leader | Build | Guest's generations (host's) | Box under the options | Box hidden during the talk | BeginSession |
+|---|---|---|---|---|---|
+| Host | before (`00f05b8`) | 1, 3, 5, 7, 9 (1, 3, 5) | closed (`talk=False`) | at the start, under both panels, and at lines 2 and 3 of the answer (about 12 frames each) | 1 |
+| Host | after | 1, 2, 3 (1, 3, 5) | up | once, the 9 frames that open the talk | 1 |
+| Guest | before | 11, 14, 16, 18, 21 (11, 13, 15) | closed | at every line | 2 (`Release "dialogue UI idle"` at the Goodbye pick) |
+| Guest | after, game's own pick (`aa5427f`) | 5, 7, 9 (7, 9, 11) | up | at each of the 3 dialogue starts (as on a host who leads) | 1 |
+| Guest | after (`0ca3cd1`) | 1, 2, 3 (1, 3, 5) | up | once | 1 |
+
+Guest log, host leads, after: `one session 1: 1 lines from 0, watching, camera on Yullia`, `watching from ...`,
+`regress chose Tell me about Kopnik.`, `one session 3: 3 lines from 0`, `one session 3 goes on from 1`,
+`gen=2 idx=0/3 root=True` ... `idx=2/3`, `watching from ...`, `one session 5 goes on from 3`, `conversation over`.
+
+Other things run by hand on the new path:
+
+| Case | How | Result |
+|---|---|---|
+| Guest starter leaves the options | `closeoptions` on the guest | `left the options`; the host says its goodbye (a new generation), the guest's box goes on to it; ends on both |
+| Talk forced shut on the host | `dlgadvance force` on the host, options open | `conversation over` on the guest, box and panel closed, guest can walk |
+| Passive dialogue | `standalone Dialogue_FirstInterruption` on the host | guest: `passive, 1 lines: Old Woman: Yes! Keep going!`, up 2 s, closes by itself |
+| Join mid-talk | host at line 2 of the answer, `kick 1`; the guest reconnected by itself (as player 2) | host: `joined mid-talk; sent generation 25 from line 1`; guest: `one session 25: 3 lines from 1`, then followed line 3, the options and the goodbye |
+| Old path | `dlgone off`, the same talk | runs line by line as before |
+
+### Stage 6 (camera per copy): not switched on
+
+With `dlgcamstream off` on both copies the watcher has its own dialogue camera for the whole talk. It never refused
+(`onPlayer=False`, no `RefuseUnvalidated`, opening shot validated on the watcher in both directions). Guest watching
+(one run): `Opening OTS-Medium`, then three later solves returned false and the opening shot stayed for the whole
+talk. Host watching a guest-led talk (one run): `Opening OTS-Medium`, `reaction over`, `Single-Close "policy
+change"`. So it works, but the watcher's shots are no better than
+the starter's stream and sometimes poorer (it stands 1.6 m to the side), and I can't look at the picture from here.
+The stream stays on by default; the switch is there to try it by eye.
+
+### Stage 8: the old path stays, as a dev fallback only
+
+No dialogue kind is sent line by line any more unless `dlgone off` is set on the host. The old code (`Kind.Line`,
+`Kind.Passive`, `Kind.Camera`, `Follow`, `ShowPending`, `FollowNow`, `PullIn`, the 3600 s passive delay) is not deleted,
+because these kinds were not run on the new path:
+- an answer said as several dialogues chained by their finish callback (`NPC_DialogueManager.ContinueDialogue`); it
+  should arrive as plain new generations, but none was in reach;
+- a `StandaloneDialogue` that chains to another one;
+- talks with a hand-in or a reward (`TakeItem`, merchants, loot in the finish callback: probe 8);
+- the hut's talk that hands over the controls (`HutSync` uses `CloseStrayLine` and `ShowAfterTalk`);
+- a join by a guest who is still loading the world (only a reconnect of a guest already in the world was run);
+- anything over a real network (both copies are on one PC; a `Start` arrives within a frame or two).
+`Show` / `ShowLocal` / `ShowAfterTalk` (the mod's own notices) use the passive box directly and stay in any case.
+
+### Regression
+
+- `olga.ps1 run villager` (each leader alone, build `aa5427f` plus `dlgcamstream`, before the pick change): PASS
+  host leads, PASS guest leads, 4.6 min.
+- Full chained run (`olga.ps1 run`, build `0ca3cd1`): **not completed**. The owner of the test PC paused testing
+  during it. Host-led playthrough: all 102 checks ok (door, yard, lutki, home, villager and the end checks: nobody
+  stuck, both can walk, digest equal, no errors in either log). Guest-led playthrough: door and yard all ok, lutki
+  ok up to the point it was stopped (46 checks, no failure); guest-led home, villager and end checks did not run.
+- With the pick change (`0ca3cd1`), a guest-led villager talk was run by hand only (table above), not by the script.
+
+Deployed and never exercised (code paths no test reached): the start of a dialogue for a guest still loading in
+(`Reconcile` starting it from `State`), a watcher's options shown again from `State`, the wait and close in
+`ChainNext` when the last line's step doesn't come within 0.4 s, `BranchTo`'s fallback to no branch, a passive
+`Start` skipped because a real talk is on screen, a passive dialogue of more than one line.
+
+### Not done, not verified
+
+- Subtitle mode for bystanders (section 4): everyone is still gathered into every talk.
+- `End` still comes 0.5 s after the host's box closes; the guest's last line stays up that long.
+- A passive dialogue cut short on the host is not cut short on guests (it runs out by itself there).
+- Dev `closeoptions` on the host still leaves the host's own box up (`Close()` is not the game's way out of the
+  panel; the game's `CloseAndEndDialogue`, which a guest's leaving runs, ends it properly).
+- With dev `say` on the host while a guest stands in the villager's detector, the talk is given to the guest (the
+  leader bug of section 8); real key presses name the host.

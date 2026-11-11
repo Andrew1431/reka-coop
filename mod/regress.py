@@ -395,6 +395,86 @@ def home(run, leader):
     run.check("both tutorials at the same place", tutorial_at(HOST) == tutorial_at(GUEST), f"{tutorial_at(HOST)} / {tutorial_at(GUEST)}")
 
 
+def box_trace(inst, since):
+    """What dev `dlgtrace` logged since a log mark: (in a talk, dialogue generation, box visible, camera session live)."""
+    rx = re.compile(r"\[dlgtrace\].*? talk=(\w+) passive=(\w+) gen=(\d+) .*? root=(\w+) .*?\| live=(\w+)")
+    return [(m.group(1) == "True" and m.group(2) == "False", int(m.group(3)), m.group(4) == "True", m.group(5) == "True")
+            for m in rx.finditer(read_log(inst)[since:])]
+
+
+def box_summary(inst, since):
+    """Of a talk as that copy's box ran it: its dialogues (generations) in order, how often the box went away inside
+    one of them after it had been up, and how many camera sessions started."""
+    gens, hidden, sessions, shown, live = [], 0, 0, set(), False
+    for talk, gen, root, cam in box_trace(inst, since):
+        if talk:
+            if gen not in gens: gens.append(gen)
+            if root: shown.add(gen)
+            elif gen in shown: hidden += 1; shown.discard(gen)
+        if cam and not live: sessions += 1
+        live = cam
+    return gens, hidden, sessions
+
+
+VILLAGER = "POI_HangingMan"   # in the tutorial village; has things to ask about, and one answer of three lines
+
+
+def villager(run, leader):
+    """A villager with things to ask about: a greeting, the options, an answer of several lines, the options again,
+    goodbye. Each of those is its own dialogue on the host, and the other copy must run the same ones: one box per
+    dialogue (not one per line), the box up under the options, one camera session."""
+    lead, other = (HOST, GUEST) if leader == "host" else (GUEST, HOST)
+    for inst in (HOST, GUEST): dismiss(inst)
+    cmd(other, f"facenpc {VILLAGER}")
+    time.sleep(2)
+    cmd(lead, f"facenpc {VILLAGER}")
+    time.sleep(13)   # the detectors both crossed arriving are forgotten (the host holds "who set this off" for 10 s)
+    for inst in (HOST, GUEST): cmd(inst, "dlgtrace on")
+    marks = {inst: len(read_log(inst)) for inst in (HOST, GUEST)}
+
+    def options(inst): return "options=True" in cmd(inst, "dlgprobe")
+
+    def to_options():
+        for _ in range(12):
+            if options(HOST): return True
+            cmd(lead, "next")
+            time.sleep(1.5)
+        return False
+
+    r = cmd(lead, f"say {VILLAGER}")
+    run.check("the villager's talk started on the host", until(talking, 8), r[:160])
+    led_by_guest = "conversation led by " + SAVE_NAME + "-guest" in read_log(HOST)[marks[HOST]:]
+    run.check(f"the {leader} leads the talk", led_by_guest == (leader == "guest"), f"led by guest: {led_by_guest}")
+    run.check("the options opened after the greeting", to_options())
+    run.check("the guest has the options too", until(lambda: options(GUEST), 5))
+    for inst in (HOST, GUEST):
+        p = cmd(inst, "dlgprobe")
+        run.check(f"{inst}: the greeting stays up under the options", p.startswith("talking=True"), p[:80])
+    cmd(lead, "pick 0")
+    run.check("the answer started on the host", until(lambda: talking(HOST) and not options(HOST), 6))
+    run.check("the options opened again after the answer", to_options())
+    run.check("the guest has them again", until(lambda: options(GUEST), 5))
+    m = re.search(r"offered=(.*?) text=", cmd(HOST, "dlgprobe"), re.S)
+    offered = [o.strip() for o in m.group(1).split("|")] if m else []
+    run.check("the last option is the goodbye", bool(offered) and offered[-1] == "Goodbye", str(offered)[:200])
+    cmd(lead, f"pick {max(len(offered) - 1, 0)}")
+    time.sleep(2)
+    ended = False
+    for _ in range(8):
+        if "talking=False" in cmd(HOST, "dlgprobe"): ended = True; break
+        cmd(lead, "next")
+        time.sleep(1.5)
+    run.check("the talk ended on the host", ended)
+    run.check("and on the guest", until(lambda: not talking(GUEST) and not options(GUEST), 6))
+    time.sleep(1.5)
+    h, g = box_summary(HOST, marks[HOST]), box_summary(GUEST, marks[GUEST])
+    for inst in (HOST, GUEST): cmd(inst, "dlgtrace off")
+    run.check("the host's talk was several dialogues", len(h[0]) >= 3, str(h))
+    run.check("the guest's box ran one dialogue per dialogue of the host's", len(g[0]) == len(h[0]), f"host {h[0]}, guest {g[0]}")
+    run.check("the guest's box never went away inside a dialogue", g[1] == 0, f"{g[1]} times")
+    run.check("the guest's camera kept one session", g[2] == 1, f"{g[2]} (host {h[2]})")
+
+
 # In story order. Each starts from its own fixture when run alone; chained, each starts where the one before ended.
 def detector(inst, name):
     """The `detectors` line of the player detector whose path ends with name ('' when it isn't listed)."""
@@ -502,6 +582,7 @@ def cleanse(run, leader):
 
 SCENARIOS = {"door": ("pre-door-1.0.32", door), "yard": ("after-door-1.0.32", yard),
              "lutki": ("after-yard-1.0.32", lutki), "home": ("talisman-1.0.32", home),
+             "villager": ("talisman-1.0.32", villager),
              "chicken": ("pine-1.0.40", chicken), "cleanse": ("cleanse-1.0.40", cleanse)}
 
 
