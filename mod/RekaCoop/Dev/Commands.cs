@@ -935,6 +935,8 @@ internal static class Commands
             File.WriteAllText(Path.Combine(BepInEx.Paths.GameRootPath, "chests.txt"), Sync.ContainerSync.DescribeAll());
             return "wrote chests.txt";
         }
+        if (a[0] == "leshy")
+            return $"favours={LeshyApproval.GetPoisCompletedInLeshysFavour()} hares={LeshyApproval.freedHares} deer={LeshyApproval.charmedDeer} lutki={LeshyApproval.helpedLutki} stuckLutki={LeshyApproval.helpedStuckLutki} offering={LeshyApproval.madeOffering} highStand={LeshyApproval.destroyedHighStand} mara={LeshyApproval.helpedMara} felled={LeshyApproval.treesFelled} reforested={LeshyApproval.treesReforested} forbidden={LeshyApproval.treeFellForbidden}";
         if (a[0] == "items")
         {
             // items [part of id]: item types the game knows, with what kind of food each is

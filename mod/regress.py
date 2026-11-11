@@ -873,13 +873,86 @@ def travel(run, leader):
     run.check("nothing a guest asked for was missing on the host", not lost, f"{len(lost)}: {lost[0][:160] if lost else ''}")
 
 
+def places(inst, name):
+    """Where the objects whose path ends with name stand on that copy: [(x, height, z)]."""
+    cmd(inst, "where " + name)
+    out = []
+    with open(os.path.join(GAME, inst, "where.txt"), encoding="utf-8", errors="replace") as f:
+        for l in f.read().splitlines():
+            m = re.match(r"\s*[+-] (\S.*?) @\(([-\d.]+), ([-\d.]+), ([-\d.]+)\)", l)
+            if m and m.group(1).endswith(name): out.append((float(m.group(2)), float(m.group(3)), float(m.group(4))))
+    return sorted(out)
+
+
+def favours(inst):
+    """The forest spirit's count of kinds of favour done, and the line it comes from."""
+    r = first_line(cmd(inst, "leshy"))
+    m = re.search(r"favours=(\d+)", r)
+    return (int(m.group(1)) if m else -1), r
+
+
+def click_through(lead, other, tries=80):
+    """A talk with its cards and notes clicked to the end by whoever may; the lines heard on the host."""
+    heard = []
+    for k in range(tries):
+        d = first_line(cmd(HOST, "dlgprobe"))
+        if "talking=True" not in d:
+            quiet = True
+            for inst in (HOST, GUEST):
+                b = first_line(cmd(inst, "buttons"))
+                for label in ("OK", "Continue", "IconButton"):
+                    if label in b: cmd(inst, "click " + label); quiet = False
+            if quiet and k > 2: break
+            time.sleep(2)
+            continue
+        line = d.split("text=")[-1][:80]
+        if not heard or heard[-1] != line: heard.append(line)
+        cmd(lead, "next"); cmd(other, "next")
+        time.sleep(1.2)
+    return heard
+
+
+def hares(run, leader):
+    """On the forest spirit's map: hares caught in traps. Breaking a trap frees one; the first freed is a favour to the
+    spirit, who then speaks for the first time. The leader breaks the first trap, the other the second: one favour on
+    both copies either way, and every trap broken on both."""
+    lead, other = (HOST, GUEST) if leader == "host" else (GUEST, HOST)
+    for inst in (HOST, GUEST): dismiss(inst)
+    traps = places(HOST, "RabbitTrap_Destructible")
+    run.check("hare traps stand in the same places on both copies", traps == places(GUEST, "RabbitTrap_Destructible"), f"{len(traps)} on the host")
+    if len(traps) < 2:   # a map generated in this run (the chained playthrough) may have none
+        print("  (this map has fewer than two hare traps; nothing more to do here)", flush=True)
+        return
+    run.check("no favour done yet", favours(HOST)[0] == 0 and favours(GUEST)[0] == 0, favours(HOST)[1][:120])
+    for n, (who, away) in enumerate(((lead, other), (other, lead))):
+        x, y, z = traps[n]
+        mark = len(read_log(HOST))
+        cmd(away, "tp 44 54 17")
+        cmd(who, f"tp {x + 2:.1f} {z + 2:.1f} {y + 1:.1f}")
+        time.sleep(5)
+        r = first_line(cmd(who, "hit 1000 RabbitTrap"))
+        run.check(f"trap {n + 1} is broken by {who}", "destroyed=True" in r, r[:160])
+        time.sleep(8)
+        heard = click_through(who, away)
+        if n == 0: run.check("the forest spirit speaks for the first time", any("stranger has stumbled" in h for h in heard), str(heard[:2]))
+        else: run.check("he says nothing the second time", not heard, str(heard[:2]))
+        time.sleep(4)
+        for inst in (HOST, GUEST):
+            f = favours(inst)
+            run.check(f"{inst}: freeing hares counts as one favour", f[0] == 1 and "hares=True" in f[1], f[1][:120])
+        log = read_log(HOST)[mark:]
+        run.check("the host heard of the trap once", count(log, "RabbitTrap_Destructible") >= 1 and "[Error" not in log)
+    left = [len(places(i, "RabbitTrap_Destructible")) for i in (HOST, GUEST)]
+    run.check("both copies have the same traps left", left[0] == left[1], str(left))
+
+
 SCENARIOS = {"door": ("pre-door-1.0.32", door), "yard": ("after-door-1.0.32", yard),
              "lutki": ("after-yard-1.0.32", lutki), "home": ("talisman-1.0.32", home),
              "villager": ("talisman-1.0.32", villager),
              "chicken": ("pine-1.0.40", chicken), "cleanse": ("cleanse-1.0.40", cleanse),
              "egg": ("egg-1.0.40", egg), "offerings": ("offerings-1.0.40", offerings),
              "bones": ("charm-1.0.40", bones), "embers": ("embers-1.0.40", embers),
-             "travel": ("hut-1.0.40", travel)}
+             "travel": ("hut-1.0.40", travel), "hares": ("leshy-1.0.40", hares)}
 
 
 def between_checks(run, name):
