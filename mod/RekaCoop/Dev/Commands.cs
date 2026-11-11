@@ -1132,6 +1132,8 @@ internal static class Commands
                 if (d < bestD) { bestD = d; best = npc; }
             }
             if (best == null) return "nobody";
+            // As the key would: the host's own press makes the talk the host's, whoever stands in the villager's detector.
+            if (CoopDriver.Session is { Role: Net.Role.Host, IsConnected: true }) Sync.DialogueSync.NoteRequest(Sync.DialogueSync.Me, 10f, act: true);
             best.SaySomething();
             return $"{best.name} says something ({Mathf.Sqrt(bestD):0} m)";
         }
