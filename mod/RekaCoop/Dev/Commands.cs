@@ -94,8 +94,7 @@ internal static class Commands
             PlayerMovement_2021.DebugMoveInputOverride = new Il2CppSystem.Nullable<Vector2>();
         }
         FuzzTick();
-        if (Time.unscaledTime < _nextCheck) return;
-        _nextCheck = Time.unscaledTime + 0.25f;
+        TalkThroughTick();
         var request = Path.Combine(BepInEx.Paths.GameRootPath, "cmd.request");
         if (!File.Exists(request)) return;
         string[] lines;
@@ -107,6 +106,37 @@ internal static class Commands
             try { Plugin.Logger.LogInfo($"[cmd] {line} -> {Run(line.Trim().Split(' '))}"); }
             catch (Exception e) { Plugin.Logger.LogError($"[cmd] {line} failed: {e}"); }
         }
+    }
+
+    // Dev: talkthrough [seconds]: clicks a talk on as fast as the game takes it, the way a player hammering the key
+    // would, until nobody is talking, a choice comes up, or the time is over. The regression suite's talks took a
+    // command round trip and a second's wait per line.
+    private static float _talkUntil = -1, _talkNext, _talkQuietSince = -1;
+    private static int _talkClicks;
+
+    private static void TalkThroughTick()
+    {
+        if (_talkUntil < 0 || Time.unscaledTime < _talkNext) return;
+        _talkNext = Time.unscaledTime + 0.15f;
+        var ui = DialogueUILogic.Instance;
+        bool talking = ui != null && ui.IsTalking && !ui.currentDialogueIsPassive;
+        string end = null;
+        if (Time.unscaledTime > _talkUntil) end = "time over";
+        else if (DialogueOptionsPanel.IsShowing) end = "a choice";
+        else if (!talking)
+        {
+            if (_talkQuietSince < 0) _talkQuietSince = Time.unscaledTime;
+            if (Time.unscaledTime - _talkQuietSince > 1.2f) end = "talk over";
+        }
+        else
+        {
+            _talkQuietSince = -1;
+            try { Run(new[] { "next" }); _talkClicks++; }
+            catch (Exception e) { end = "failed: " + e.Message; }
+        }
+        if (end == null) return;
+        _talkUntil = -1;
+        Plugin.Logger.LogInfo($"[talkthrough] {end} after {_talkClicks} clicks");
     }
 
     // Dev: random building and unbuilding near the house, run on several machines at once (the build exit test).
@@ -1119,6 +1149,13 @@ internal static class Commands
             foreach (var sd in UnityEngine.Object.FindObjectsByType<StandaloneDialogue>(FindObjectsInactive.Include, FindObjectsSortMode.None))
                 if (Sync.GearObjects.PathOf(sd.transform).Contains(a[1])) { sd.StartDialogue(); return $"started {Sync.GearObjects.PathOf(sd.transform)}"; }
             return "none";
+        }
+        if (a[0] == "talkthrough")
+        {
+            if (a.Length > 1 && a[1] == "off") { _talkUntil = -1; return "off"; }
+            _talkUntil = Time.unscaledTime + (a.Length > 1 ? F(a[1]) : 90f);
+            _talkClicks = 0; _talkQuietSince = -1; _talkNext = 0;
+            return "clicking on";
         }
         if (a[0] == "next")
         {

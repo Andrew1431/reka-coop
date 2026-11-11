@@ -81,6 +81,26 @@ proved on the tutorial beat that first needs it, not a plan per scene:
 - [ ] The talk camera is often wrong on the copy that does not lead the talk (reported by the user 2026-11-11, embers
       talk "Pfft, don't look at me like that": the host frames the old woman, the guest looks at its own player's back
       from behind with her out of frame). Many talks. Not urgent.
+- [ ] Playtest notes from the user, 2026-11-11 (hut after the tutorial, both windows on one PC; not fixed yet):
+      - The bread oven's cooking countdown differs between the copies (host 23, guest 12 at the same moment); the
+        finished meal then appears on both. StationSync leaves running timers out of its comparison (`TimerRx`), so
+        each copy counts down from whenever it got the station's state. Wants a pass on the oven as a whole.
+      - While the host drives the hut, the guest loses all input and can't move. That was bearable when the guest's
+        camera followed the host's driving view; now the guest is stuck looking at its own still camera. Either give
+        the guest the driving view again or let it move and look around aboard (`watchingDrive` in HutSync).
+      - Travel by driving into the fog (host drives): the guest also got "Do you want to leave this map and travel
+        onwards?" (PopupSync mirrors it with a Continue button); it should be the driver's alone. After the host
+        answered, the Travel UI's one-line talk "*happy clucking*" was led by the guest ("conversation led by
+        playtest-guest", log line "one session 16 ... leading" on the guest), so the host could not click it on,
+        and the host, seated at the controls, was "moved beside the starter". Talks the travel screen starts must be
+        the driver's.
+      - Same session: "playtest-guest asked for Say at Home[0]/PlatformFollower[9]/BB_Chicken_Skeleton_Chair(Clone)_
+        00:02:27.7450000[32]/TalkableVillager[3], not found here": the chair's name carries a time stamp that
+        differs per copy, so a guest cannot talk to the chair (ScenePath by name fails for built pieces).
+        User's leaning on the drive (to discuss later, nothing decided): lock everyone's movement and have them follow the
+        host's drive, as the simple and safe option. The dream version is smooth hut movement with either player
+        able to drive, but the hut's two-legged walk is shaky by nature, so walking around aboard would likely look
+        ugly and cause trouble.
 - [ ] Guests still send `GenericPOICondition` changes to the host. The host now waits 2 s and only takes a guest's
       word if its own copy has not got there (it used to run what hangs on the condition twice). Remove once the
       Lutki's planks no longer need it (phase 4).

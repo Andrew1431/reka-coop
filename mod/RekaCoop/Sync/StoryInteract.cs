@@ -77,5 +77,11 @@ internal static class StoryInteractHooks
     }
 
     [HarmonyPrefix, HarmonyPatch(nameof(PlayerDetection.SimulateInteraction))]
-    private static bool Simulate(PlayerDetection __instance) => StoryInteract.Local(__instance);
+    private static bool Simulate(PlayerDetection __instance)
+    {
+        // The same for a use that doesn't come from the key (the dev `interact` the regression suite presses with):
+        // seen on the second test PC, a guest standing in a villager's detector led the talk the host started.
+        if (!StoryInteract.Running && CoopDriver.Session is { Role: Net.Role.Host, IsConnected: true }) DialogueSync.NoteRequest(DialogueSync.Me, 10f, act: true);
+        return StoryInteract.Local(__instance);
+    }
 }
