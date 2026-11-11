@@ -805,12 +805,39 @@ def finale(run, leader):
     for inst in (HOST, GUEST): dismiss(inst)
 
 
+def travel(run, leader):
+    """The trial done, the house travels on to the first generated map. Where it goes is the host's to decide: a
+    guest's try does nothing, the host's takes everyone along."""
+    for inst in (HOST, GUEST): dismiss(inst)
+    hm, gm = len(read_log(HOST)), len(read_log(GUEST))
+    cmd(GUEST, "travel")
+    time.sleep(6)
+    run.check("a guest can't send the house off", "guest map change (new map) skipped" in read_log(GUEST)[gm:]
+              and "host travels" not in read_log(HOST)[hm:])
+    cmd(HOST, "travel")
+    run.check("the host's house travels", wait_log(HOST, r"World transfer: host travels", 20, since=hm))
+    run.check("the guest is told", wait_log(GUEST, r"the host is travelling to another map", 20, since=gm))
+    run.check("the host arrives and sends the new world", wait_log(HOST, r"World transfer: sent .* to player 1", 300, since=hm))
+    run.check("the guest loads it", wait_log(GUEST, r"World transfer: new world \(generated map\)", 420, since=gm))
+    time.sleep(30)
+    for inst in (HOST, GUEST): dismiss(inst)
+    a, b = pos(HOST), pos(GUEST)
+    apart = ((a[0] - b[0]) ** 2 + (a[2] - b[2]) ** 2) ** 0.5
+    run.check("both stand in the house on the new map", apart < 8, f"{apart:.1f} m apart")
+    hut = [re.search(r"hut=\(([^)]*)\)", cmd(i, "status")) for i in (HOST, GUEST)]
+    run.check("the house stands in the same place on both", all(hut) and hut[0].group(1) == hut[1].group(1), str([h and h.group(1) for h in hut]))
+    run.check("the trial stays complete on both", all("complete=True" in cmd(i, "trials") for i in (HOST, GUEST)))
+    lost = [l for l in read_log(HOST)[hm:].splitlines() if "not found here" in l]
+    run.check("nothing a guest asked for was missing on the host", not lost, f"{len(lost)}: {lost[0][:160] if lost else ''}")
+
+
 SCENARIOS = {"door": ("pre-door-1.0.32", door), "yard": ("after-door-1.0.32", yard),
              "lutki": ("after-yard-1.0.32", lutki), "home": ("talisman-1.0.32", home),
              "villager": ("talisman-1.0.32", villager),
              "chicken": ("pine-1.0.40", chicken), "cleanse": ("cleanse-1.0.40", cleanse),
              "egg": ("egg-1.0.40", egg), "offerings": ("offerings-1.0.40", offerings),
-             "bones": ("charm-1.0.40", bones), "embers": ("embers-1.0.40", embers)}
+             "bones": ("charm-1.0.40", bones), "embers": ("embers-1.0.40", embers),
+             "travel": ("hut-1.0.40", travel)}
 
 
 def between_checks(run, name):

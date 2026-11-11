@@ -54,6 +54,7 @@ public static class AiSync
         _byKey = new Dictionary<string, GeneralAIController>();
         foreach (var ai in found ?? new GeneralAIController[0])
         {
+            if (ai == null) continue;   // gone with the old map since the last scan
             var key = KeyOf(ai);
             if (key != null) _byKey[key] = ai;
         }

@@ -140,3 +140,13 @@ generated quest of each task family on the first map (M2 to M4, M10), then phase
   Chicken", all 19 tasks) completes on both copies, guest-led and host-led. Also: a guest's talisman goes back to
   "home" with the host's after the ritual, and the game's ritual-finished switch is set on guests. Next: leaving
   the first map in the house, then generated quests; the three open items above.
+- 2026-11-11 **Shared playthrough and the first travel.** Regression has a third playthrough, "shared, taking
+  turns": the players swap who starts each step and split the step (branch / chicken, egg carried / put in the oven,
+  first bowl / grain and second bowl, both charms on the bones, embers talk / embers fetched). Passes locally; the
+  two single-leader playthroughs pass on Olga's PC on the final build. New scenario `travel` (fixture `hut-1.0.40`,
+  after the trial): a guest's try is refused, the host's takes everyone to the first generated map. Fixed on the
+  way: a guest could travel alone within two minutes of loading the host's world; a guest counted the new map
+  twice (`PoiMapHistoryTracker`); characters gone with the old map threw in `AiSync`; roads are left out of
+  ActiveSync (a generated map names them differently from a loaded one). Wildlife the map spawns around a player
+  (`ODPOI_`) is each copy's own for now: not synced, a guest's hare notices the guest itself. Seen, not looked
+  into: "Stations: no PlantGrowth ... here; dropped its state" for five far-away plants on the guest after travel.

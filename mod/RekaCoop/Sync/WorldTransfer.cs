@@ -29,6 +29,8 @@ public static class WorldTransfer
     private static float _hostLoadUntil = -1;
     // Guest: loading the host's world, which itself changes the map; let that through for a while.
     internal static bool LoadingHostWorld => Time.unscaledTime < _hostLoadUntil;
+    // The map the host's save led to is up: from here on a map change on a guest is the guest's own try.
+    internal static void HostWorldArrived() => _hostLoadUntil = -1;
 
     public static bool HasWorld { get; private set; }
 
@@ -422,10 +424,10 @@ internal static class TravelHooks
     private static void IntroOver() { if (CoopDriver.Session?.Role != Role.Client) WorldTransfer.OnIntro(false); }
 
     [HarmonyPostfix, HarmonyPatch(typeof(MapChanger), nameof(MapChanger.FinishGenJump))]
-    private static void ArrivedGenerated() => Arrived("generated map");
+    private static void ArrivedGenerated() { Arrived("generated map"); WorldTransfer.HostWorldArrived(); }
 
     [HarmonyPostfix, HarmonyPatch(typeof(MapChanger), nameof(MapChanger.FinishHandPlacedJump))]
-    private static void ArrivedHandPlaced() => Arrived("hand-placed map");
+    private static void ArrivedHandPlaced() { Arrived("hand-placed map"); WorldTransfer.HostWorldArrived(); }
 
     [HarmonyPostfix, HarmonyPatch(typeof(SaveLoadGame), nameof(SaveLoadGame.ApplyLoadedSaveGame))]
     private static void Loaded()
@@ -462,6 +464,14 @@ internal static class TravelHooks
         WorldTransfer.OnHostTravel(how);
         return true;
     }
+}
+
+// The count of maps travelled goes up on entering one. A guest enters by loading the save the host made on arrival,
+// which already has the new number, and would count the same map again.
+[HarmonyPatch(typeof(PoiMapHistoryTracker), nameof(PoiMapHistoryTracker.OnEnteredMap))]
+internal static class GuestCountsNoMaps
+{
+    private static bool Prefix() => !WorldSync.IsGuest;
 }
 
 // A guest plays only the host's world: its own Start, Continue, New game and save slots do nothing but say so.

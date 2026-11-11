@@ -22,6 +22,8 @@ public static class ActiveSync
     {
         "Main Canvas", "PlayerCameraSetup", "BackgroundImages", "UseItems", "Ground contact decals", "WeatherManager", "Scripts",
         "Home", "MapBoundaries", "Unused Overlay UI",  // interaction prompts, pooled per copy
+        // Roads: named after how they were made, and the host generates a map where a guest loads it.
+        "PathGenerator", "Terrain path nav areas",
     };
     private const int MinRootSize = 100;   // vegetation and small props are their own roots
     private const int CheckPerFrame = 400;
@@ -248,8 +250,9 @@ public static class ActiveSync
             // A villager's held tool follows what its own AI is doing on each copy, and the glow that marks something as
             // usable follows each copy's own prompts: noise, not story. Things a place
             // spawns below itself while running (a ring's spots to sweep) exist on a copy only if they were there
-            // when it indexed; UseItemSync and the place's own state keep those in step.
-            if (node.Go != null && !node.Key.Contains("PropFollower") && !node.Key.Contains("(Clone)[") && !node.Key.Contains("vfx_Interactable")) yield return new(node.Key, node.Go.activeSelf ? "1" : "0");
+            // when it indexed; UseItemSync and the place's own state keep those in step. Wildlife spawned around a
+            // player (ODPOI_) is each copy's own.
+            if (node.Go != null && !node.Key.Contains("PropFollower") && !node.Key.Contains("(Clone)[") && !node.Key.Contains("vfx_Interactable") && !node.Key.StartsWith("ODPOI_")) yield return new(node.Key, node.Go.activeSelf ? "1" : "0");
     }
 
     public static string Describe() => _nodes == null ? "indexing" : $"{_nodes.Count} watched, {Changed.Count} changed since load";

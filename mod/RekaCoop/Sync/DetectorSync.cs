@@ -89,6 +89,9 @@ internal static class DetectorSync
             else if (enter && _tickFor < 0 && !Watches(d)) DialogueSync.NoteRequest(DialogueSync.Me, 10f);
             return true;
         }
+        // Wildlife the map spawns around each player (ODPOI_WildHare) is each copy's own: the host has no such animal
+        // to run this for, so a guest's hare notices the guest by itself.
+        if (Watches(d) && d.transform.root.name.StartsWith("ODPOI_")) return true;
         if (Logged.Add(d.GetInstanceID()))
             Plugin.Logger.LogInfo($"Detectors: {(enter ? "entered" : "left")} {ScenePath.Of(d.transform)}; the host runs it");
         // The host's copy of it may be off: something only this copy did switched it on.
