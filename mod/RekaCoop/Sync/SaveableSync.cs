@@ -289,6 +289,11 @@ public static class SaveableSync
             if (key.StartsWith("PoiMapHistoryTracker") && System.Text.RegularExpressions.Regex.Match(xml, @"<currentMapNumber>(-?\d+)</currentMapNumber>") is { Success: true } m
                 && RekaCoop.Sync.Find.One<PoiMapHistoryTracker>() is { } history)
                 history.currentMapNumber = int.Parse(m.Groups[1].Value);
+            // The talisman's restore only ever switches "teleport somewhere else" on (the old woman's yard during the
+            // tutorial); the host's going back to plain "home" after the ritual has to be taken by hand.
+            if (key.StartsWith("UseItem_Backport") && xml.Contains("<backport_teleportToOverwrite>false<")
+                && RekaCoop.Sync.Find.One<UseItem_Backport>() is { teleportToOverwrite: true } backport)
+                backport.StopOverrideTeleport();
             Applied[key] = Capture(e) ?? xml;  // as it reads back here, so our own-unlock check doesn't send it back
             Plugin.Logger.LogInfo($"Saveables: restored {key}");
             return true;

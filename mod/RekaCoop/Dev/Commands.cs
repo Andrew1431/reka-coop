@@ -1372,7 +1372,7 @@ internal static class Commands
         foreach (var b in UnityEngine.Object.FindObjectsByType<UnityEngine.UI.Button>(FindObjectsSortMode.None))
         {
             var text = b.GetComponentInChildren<TMPro.TMP_Text>()?.text?.Trim();
-            if (!b.interactable || !string.Equals(text, label, StringComparison.OrdinalIgnoreCase)) continue;
+            if (!b.interactable || !(string.Equals(text, label, StringComparison.OrdinalIgnoreCase) || (string.IsNullOrEmpty(text) && b.name == label))) continue;
             b.onClick.Invoke();
             pressed.Add(b.name);
         }

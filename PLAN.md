@@ -132,6 +132,8 @@ generated quest of each task family on the first map (M2 to M4, M10), then phase
   guest's condition deferred on the host, deliberate acts outranking detector walk-ins for who leads a talk, a tool's
   own parts and run-time clones left out of the on/off comparison. Villager talks run as one session too (merged
   from a side branch, dialogue stages 5 and 7). Regression scenarios `villager`, `chicken`, `cleanse`, `egg`,
-  `offerings`, `bones`, `embers`, `finale` with fixtures `*-1.0.40`; `--start=<fixture>` leaves both games up there.
-  After the ritual the building lesson is skipped in co-op and both players can build. Left: task 18 (leaving the
-  map in the house), the three open items above, generated quests.
+  `offerings`, `bones`, `embers` (through the finale) with fixtures `*-1.0.40`; `--start=<fixture>` leaves both games up there.
+  After the ritual the building lesson is skipped in co-op, both players can build, and the trial ("Trial of the
+  Chicken", all 19 tasks) completes on both copies, guest-led and host-led. Also: a guest's talisman goes back to
+  "home" with the host's after the ritual, and the game's ritual-finished switch is set on guests. Next: leaving
+  the first map in the house, then generated quests; the three open items above.

@@ -20,6 +20,8 @@ internal static class RitualSync
             if (CoopDriver.Session is { IsConnected: true }) Plugin.Logger.LogInfo($"Ritual: {__instance.step} ({__instance.name})");
             return true;
         }
+        // The game's own "the ritual is over" switch is flipped inside Advance; a guest's copy would never have it.
+        if (__instance.step == RitualProgressionAdvancer.RitualStep.RitualFinished) RitualIdentifier.ritualFinished = true;
         if (Logged.Add(__instance.GetInstanceID()))
             Plugin.Logger.LogInfo($"Ritual: {__instance.step} ({__instance.name}) reached here; the host's copy decides");
         return false;

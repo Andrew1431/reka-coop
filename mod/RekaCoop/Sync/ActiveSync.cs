@@ -65,7 +65,7 @@ public static class ActiveSync
         t.GetComponent<GeneralAIController>() != null || t.GetComponent<Animator>() != null || t.GetComponent<Canvas>() != null
         || t.GetComponent<CarriableObject>() != null
         // A tool's own parts show while its player holds it (the ritual's charm lives in the ritual, not on the player).
-        || (t.parent != null && t.parent.GetComponent<BaseUseItem>() != null);
+        || t.GetComponent<BaseUseItem>() != null;
 
     // Indexes the story roots a few hundred objects a frame; true once done.
     private static bool Indexed()
@@ -245,10 +245,11 @@ public static class ActiveSync
     private static IEnumerable<KeyValuePair<string, string>> Walk(List<Node> nodes)
     {
         foreach (var node in nodes)
-            // A villager's held tool follows what its own AI is doing on each copy: noise, not story. Things a place
+            // A villager's held tool follows what its own AI is doing on each copy, and the glow that marks something as
+            // usable follows each copy's own prompts: noise, not story. Things a place
             // spawns below itself while running (a ring's spots to sweep) exist on a copy only if they were there
             // when it indexed; UseItemSync and the place's own state keep those in step.
-            if (node.Go != null && !node.Key.Contains("PropFollower") && !node.Key.Contains("(Clone)[")) yield return new(node.Key, node.Go.activeSelf ? "1" : "0");
+            if (node.Go != null && !node.Key.Contains("PropFollower") && !node.Key.Contains("(Clone)[") && !node.Key.Contains("vfx_Interactable")) yield return new(node.Key, node.Go.activeSelf ? "1" : "0");
     }
 
     public static string Describe() => _nodes == null ? "indexing" : $"{_nodes.Count} watched, {Changed.Count} changed since load";

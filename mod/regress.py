@@ -229,6 +229,7 @@ def dismiss(inst):
     for _ in range(6):
         b = (cmd(inst, "buttons").splitlines() or [""])[0]
         label = next((l for l in ("OK", "Continue", "CLAIM") if f":'{l}'" in b), None)
+        if not label and b.strip() == "IconButton:''": label = "IconButton"   # the chapter-complete card's only button
         if not label: break
         cmd(inst, f"click {label}")
         n += 1
@@ -639,9 +640,10 @@ def offerings(run, leader):
     for inst in (HOST, GUEST):
         n = pack_count(inst, "Item_Collected_Tier1_Honeycomb")
         run.check(f"{inst}: the shared pack paid one honeycomb", n == honey - 1, f"{honey} before, {n} now")
-    # She walks to the second bowl and calls from there; nobody set that talk off.
-    run.check("she calls from the second bowl", until(lambda: talking(HOST), 90, 2))
-    run.check("that talk ended", finish_any(other if leader == "guest" else lead, lead if leader == "guest" else other))
+    # She walks to the second bowl and calls from there (nobody set that talk off, so the host leads it): it follows
+    # so closely that the clicking above usually ends it too.
+    if until(lambda: talking(HOST), 20, 2): run.check("her call from the second bowl ended", finish_any(HOST, GUEST))
+    run.check("the second bowl can be filled", until(lambda: "grain_bunch on=True" in cmd(HOST, "detections 80"), 90, 3))
     cmd(lead, "tp 85 4 4")
     time.sleep(4)
     for _ in range(3):
@@ -744,6 +746,8 @@ def embers(run, leader):
     log = read_log(HOST)[mark:]
     for step in ("BroughtEmbers", "GaveEmbersToBaba"):
         run.check(f"the host ran {step} once", count(log, "Ritual: " + step) == 1, str(count(log, "Ritual: " + step)))
+    # The cutscene starts at once and the game can't be saved while it plays: the finale has no fixture of its own.
+    finale(run, leader)
 
 
 def finale(run, leader):
@@ -764,8 +768,12 @@ def finale(run, leader):
     tasks_done(run, 16, "the ritual is finished")
     run.check("her last talk started", until(lambda: talking(HOST), 30, 2))
     run.check("that talk ended", finish_any(HOST, GUEST))
-    time.sleep(6)
-    if talking(HOST): run.check("her parting line ended", finish_any(HOST, GUEST))
+    # Her gifts, the building tool, then one parting line.
+    for inst in (HOST, GUEST): dismiss(inst)
+    for n in range(4):   # her parting line, then (the building lesson being skipped in co-op) her last task
+        if not until(lambda: talking(HOST), 20, 2): break
+        run.check(f"her talk {n + 1} after the gifts ended", finish_any(HOST, GUEST))
+        for inst in (HOST, GUEST): dismiss(inst)
     for inst in (HOST, GUEST):
         dismiss(inst)
         run.check(f"{inst}: the ritual counts as finished", "ritualFinished=True" in cmd(inst, "status"), cmd(inst, "status")[:160])
@@ -780,8 +788,7 @@ SCENARIOS = {"door": ("pre-door-1.0.32", door), "yard": ("after-door-1.0.32", ya
              "villager": ("talisman-1.0.32", villager),
              "chicken": ("pine-1.0.40", chicken), "cleanse": ("cleanse-1.0.40", cleanse),
              "egg": ("egg-1.0.40", egg), "offerings": ("offerings-1.0.40", offerings),
-             "bones": ("charm-1.0.40", bones), "embers": ("embers-1.0.40", embers),
-             "finale": ("finale-1.0.40", finale)}
+             "bones": ("charm-1.0.40", bones), "embers": ("embers-1.0.40", embers)}
 
 
 def between_checks(run, name):
