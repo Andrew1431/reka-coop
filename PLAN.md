@@ -150,3 +150,18 @@ generated quest of each task family on the first map (M2 to M4, M10), then phase
   ActiveSync (a generated map names them differently from a loaded one). Wildlife the map spawns around a player
   (`ODPOI_`) is each copy's own for now: not synced, a guest's hare notices the guest itself. Seen, not looked
   into: "Stations: no PlantGrowth ... here; dropped its state" for five far-away plants on the guest after travel.
+- 2026-11-11 **Travel the game's own way; the forest spirit's trial starts in co-op.** `travel` now goes through
+  `MapBorderFogManager.TriggerTravel` (the question at the map's edge), the travel screen (`BB_Logic_TravelStation`,
+  one free destination after the tutorial: `Chapter01_MainQuest_01_LeshyFirstOffering`) and `UI_TravelStation.TravelOnwards`.
+  The dev `travel` command (`JumpToNewMap`) lands on a plain map with no trial. Found: the new trial's title card
+  and intro talk start the moment the host arrives and the game can't save while they are up, so the arrival save
+  never went out and the guest heard the intro from the old map. The host now holds the title card
+  (`WorldTransfer.HoldForGuests`) until every guest stands in the new world, three minutes at most. Trial 1
+  ("Trial of the Forest Spirit": three favours, then his trial) begins on both. Open: any other window open on
+  the host at arrival still delays the guests' save; the hint "walk your house into the fog" does this in the
+  scripted run. Not exercised: sitting in the skeleton chair and walking the house to the edge (dev `hutctl`
+  leaves the player stuck after travel, so the scenario calls TriggerTravel directly); the food screen (three
+  meals, `FoodSelectionUI`; TravelOnwards went through with none chosen, real play may not allow that); cooking.
+  Dev commands `items [part]` and `travelui [food|pick|confirm|dest|go|open|close]`. Olga's PC, build of this
+  morning plus the first travel scenario: guest-led and shared playthroughs pass, host-led failed only on a
+  guest's request for an old-map deer that arrived as the host left (the check now starts at the guest's arrival).

@@ -935,6 +935,51 @@ internal static class Commands
             File.WriteAllText(Path.Combine(BepInEx.Paths.GameRootPath, "chests.txt"), Sync.ContainerSync.DescribeAll());
             return "wrote chests.txt";
         }
+        if (a[0] == "items")
+        {
+            // items [part of id]: item types the game knows, with what kind of food each is
+            var m = UnityEngine.Object.FindFirstObjectByType<InventoryManager>();
+            var sb = new System.Text.StringBuilder();
+            foreach (var p in m.pRef.possessionIDs)
+            {
+                if (p == null || p.ID == null || (a.Length > 1 && p.ID.IndexOf(a[1], StringComparison.OrdinalIgnoreCase) < 0)) continue;
+                var item = p.possession?.TryCast<Item>();
+                if (item == null) continue;
+                sb.Append($"{p.ID} food={item.foodTag}/{item.foodValue:0.#} cat={item.category}; ");
+            }
+            return sb.Length == 0 ? "none" : sb.ToString();
+        }
+        if (a[0] == "travelui")
+        {
+            // travelui | food <n> | pick <slot> | confirm | dest <n> | go | close : the hut's travel screen, step by step
+            var logic = Resources.FindObjectsOfTypeAll<BB_Logic_TravelStation>().FirstOrDefault(x => x.gameObject.scene.IsValid());
+            var ui = Resources.FindObjectsOfTypeAll<UI_TravelStation>().FirstOrDefault(x => x.gameObject.scene.IsValid());
+            var food = Resources.FindObjectsOfTypeAll<FoodSelectionUI>().FirstOrDefault(x => x.gameObject.scene.IsValid());
+            if (logic == null || ui == null || food == null) return "no travel screen";
+            string did = "";
+            if (a.Length > 1)
+            {
+                if (a[1] == "food") { food.OnSlotClicked(food.foodToDisplay[int.Parse(a[2])]._type); did = "food clicked; "; }
+                else if (a[1] == "pick") { food.OnSelectionClicked(int.Parse(a[2])); did = "selection clicked; "; }
+                else if (a[1] == "confirm") { food.TryConfirmSelection(); did = "confirm tried; "; }
+                else if (a[1] == "dest") { logic.SetDestination(logic.availableDestinations[int.Parse(a[2])]); did = "destination set; "; }
+                else if (a[1] == "go") { ui.TravelOnwards(); did = "travel onwards; "; }
+                else if (a[1] == "exec") { logic.ExecuteTravel(); did = "executed; "; }
+                else if (a[1] == "open") { ui.OnOpen(); did = "opened; "; }
+                else if (a[1] == "close") { ui.CloseTravelScreen(); did = "closed; "; }
+            }
+            var sb = new System.Text.StringBuilder(did);
+            sb.Append($"open={ui.gameObject.activeInHierarchy} foodScreen={food.display != null && food.display.gameObject.activeInHierarchy} selected={ui.indexOfSelected} need={food.foodsToSelect}; destinations:");
+            var dests = logic.availableDestinations;
+            for (int i = 0; dests != null && i < dests.Count; i++) sb.Append($" [{i}] {DescribeDest(dests[i])}");
+            sb.Append("; food:");
+            var foods = food.foodToDisplay;
+            for (int i = 0; foods != null && i < foods.Count; i++) sb.Append($" [{i}] {foods[i]?._type?.name} x{foods[i]?._amount}");
+            sb.Append("; chosen:");
+            var sel = food.selections;
+            for (int i = 0; sel != null && i < sel.Length; i++) sb.Append($" {(sel[i] == null ? "-" : sel[i].name)}");
+            return sb.ToString();
+        }
         if (a[0] == "travel")
         {
             UnityEngine.Object.FindFirstObjectByType<MapChanger>().JumpToNewMap();
@@ -1365,6 +1410,9 @@ internal static class Commands
         $"sprint={h.toggleSprintToggledOn} speed={h.currentSpeed:0.00}/{h.targetSpeed:0.00} auto={h.isAutoMoving} standing={h.isStanding} moving={h.HutIsMoving} " +
         $"player={(h.player != null)} pos={h.transform.position} yaw={h.transform.eulerAngles.y:0} cam={Camera.main?.name} lookAt={h.lookAtEngaged} " +
         $"takeover<{h.lookAtTakeoverDistance} always<{h.lookAtAlwaysEngageDistance} dot>{h.lookAtCameraDot} sitPrompt={h._sitPromptVisible} focus={h._hasSitFocus} id={h.myInteractionID} atHome={h.playerAtHomeBase}";
+
+    private static string DescribeDest(TravelLocation d) =>
+        d == null ? "null" : $"cost={d.travelCost} pois={d.poiCount} village={d.hasVillage} tier={d.usedItemTierForCreation} preset={(d.preset != null ? d.preset.name : "-")} spawn=[{(d.poiIDsToSpawn != null ? string.Join(",", d.poiIDsToSpawn.ToArray()) : "")}]";
 
     private static string Click(string label)
     {

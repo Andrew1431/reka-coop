@@ -326,9 +326,11 @@ internal static class PopupHooks
         PopupSync.LocalLoot(__0, __1, __2);
 
     [HarmonyPrefix, HarmonyPatch(typeof(PopUp_Chapter), nameof(PopUp_Chapter.QueuePopUp))]
-    private static bool Chapter(TasksTracker.ChapterTag __0, string __1, bool __2)
+    private static bool Chapter(PopUp_Chapter __instance, TasksTracker.ChapterTag __0, string __1, bool __2, Il2CppSystem.Action __3)
     {
         if (!PopupSync.GuestLocal("chapter:" + __1 + __2)) return false;
+        // Just arrived somewhere with guests still on their way: the card waits for them (this runs again then).
+        if (!__2 && WorldTransfer.HoldForGuests($"the chapter card {__1}", () => __instance.QueuePopUp(__0, __1, __2, __3))) return false;
         PopupSync.LocalChapter(__0, __1, __2);
         return true;
     }

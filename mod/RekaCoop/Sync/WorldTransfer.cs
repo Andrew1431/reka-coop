@@ -240,8 +240,61 @@ public static class WorldTransfer
         if (written < _travelledAt || DateTime.UtcNow - written < TimeSpan.FromSeconds(3)) return;
         _resendAfterSave = false;
         Plugin.Logger.LogInfo($"World transfer: arrived; sending the new world {dir}");
+        Arriving.Clear();
         foreach (var p in session.Players.Values)
-            if (p.Ready) SendWorld(session, p.PlayerId, newest: true);
+            if (p.Ready) { SendWorld(session, p.PlayerId, newest: true); Arriving[p.PlayerId] = false; }
+        _arrivingSince = Time.unscaledTime;
+    }
+
+    // A new trial opens with its title card and the old woman's words the moment the hut arrives. The game can't save
+    // while those are up, and the save made on arrival is how guests get the new map: they would hear all of it from
+    // the old one. So the host holds the card until every guest stands in the new world (or has had three minutes).
+    private static readonly Dictionary<int, bool> Arriving = new();   // guest -> went quiet (loading) since the world was sent
+    private static float _arrivingSince;
+    private static System.Action _heldCard;
+    private static float _heldSince;
+    private const float HoldAtMost = 180f;
+    private static bool _showingHeld;
+
+    internal static bool HoldForGuests(string what, System.Action show)
+    {
+        var session = CoopDriver.Session;
+        if (_showingHeld || session?.Role != Role.Host || !session.IsConnected || _heldCard != null) return false;
+        if (!_resendAfterSave && Arriving.Count == 0) return false;
+        if (!session.Players.Values.Any(p => p.Ready)) return false;
+        _heldCard = show;
+        _heldSince = Time.unscaledTime;
+        Plugin.Logger.LogInfo($"World transfer: holding {what} until the guests have arrived");
+        return true;
+    }
+
+    private static void WatchArrivals(CoopSession session)
+    {
+        if (Arriving.Count > 0)
+        {
+            foreach (var id in Arriving.Keys.ToList())
+            {
+                bool here = PlayerSync.InWorldNow(id);
+                if (!session.Players.ContainsKey(id)) Arriving.Remove(id);
+                else if (!here) Arriving[id] = true;
+                else if (Arriving[id])
+                {
+                    Arriving.Remove(id);
+                    Plugin.Logger.LogInfo($"World transfer: player {id} stands in the new world");
+                }
+            }
+            if (Time.unscaledTime - _arrivingSince > HoldAtMost) Arriving.Clear();
+        }
+        if (_heldCard == null) return;
+        bool late = Time.unscaledTime - _heldSince > HoldAtMost;
+        if (!late && (_resendAfterSave || Arriving.Count > 0)) return;
+        var show = _heldCard;
+        _heldCard = null;
+        Plugin.Logger.LogInfo(late ? "World transfer: not everyone arrived in time; showing what was held" : "World transfer: everyone arrived; showing what was held");
+        _showingHeld = true;
+        try { show(); }
+        catch (Exception e) { Plugin.Logger.LogWarning($"World transfer: showing what was held failed: {e.Message}"); }
+        finally { _showingHeld = false; }
     }
 
     // Guest, every frame: once the main menu is up, swap the sandbox saves for the host's world and load it.
@@ -252,6 +305,7 @@ public static class WorldTransfer
         if (session.Role == Role.Host)
         {
             WatchForArrivalSave(session);
+            WatchArrivals(session);
             WatchJourneyStart(session);
             if (PendingJoiners.Count == 0) return;
             if (StartingJourney)

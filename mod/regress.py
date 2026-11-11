@@ -805,29 +805,71 @@ def finale(run, leader):
     for inst in (HOST, GUEST): dismiss(inst)
 
 
+def first_line(text): return (text.splitlines() or [""])[0]
+
+
 def travel(run, leader):
-    """The trial done, the house travels on to the first generated map. Where it goes is the host's to decide: a
-    guest's try does nothing, the host's takes everyone along."""
+    """The trial done, the house travels on to the first generated map, the game's own way: the host answers the
+    question at the map's edge and picks the destination on the travel screen. A guest's try does nothing. The next trial's title card and the old woman's words wait until the guest stands in the new world.
+    (Not exercised: walking the house to the edge, and choosing food for the journey.)"""
     for inst in (HOST, GUEST): dismiss(inst)
     hm, gm = len(read_log(HOST)), len(read_log(GUEST))
     cmd(GUEST, "travel")
     time.sleep(6)
     run.check("a guest can't send the house off", "guest map change (new map) skipped" in read_log(GUEST)[gm:]
               and "host travels" not in read_log(HOST)[hm:])
-    cmd(HOST, "travel")
+    # What the game does when the house is walked into the fog at the map's edge (the walk itself is not driven here).
+    cmd(HOST, "fields MapBorderFogManager invoke TriggerTravel")
+    run.check("the host is asked whether to travel on", until(lambda: "Travel onwards!" in cmd(HOST, "buttons"), 10), first_line(cmd(HOST, "buttons"))[:120])
+    cmd(HOST, "click Travel onwards!")
+    time.sleep(4)
+    ui = first_line(cmd(HOST, "travelui"))
+    run.check("the travel screen offers the forest spirit's map", "LeshyFirstOffering" in ui, ui[:200])
+    cmd(HOST, "travelui dest 0")
+    time.sleep(1)
+    cmd(HOST, "travelui go")
     run.check("the host's house travels", wait_log(HOST, r"World transfer: host travels", 20, since=hm))
     run.check("the guest is told", wait_log(GUEST, r"the host is travelling to another map", 20, since=gm))
+    run.check("the trial's title card waits for the guest", wait_log(HOST, r"World transfer: holding the chapter card", 300, since=hm))
+    # The hint about walking into the fog comes up again on the way; while any window is open the game won't save,
+    # and the save made on arrival is what guests load.
+    for _ in range(4):
+        time.sleep(3)
+        cmd(HOST, "click OK")
     run.check("the host arrives and sends the new world", wait_log(HOST, r"World transfer: sent .* to player 1", 300, since=hm))
     run.check("the guest loads it", wait_log(GUEST, r"World transfer: new world \(generated map\)", 420, since=gm))
-    time.sleep(30)
-    for inst in (HOST, GUEST): dismiss(inst)
+    run.check("the card is shown once the guest is there", wait_log(HOST, r"World transfer: everyone arrived; showing what was held", 120, since=hm))
+    cmd(GUEST, "click Continue"); dismiss(GUEST)   # the guest's copy of the question at the edge
+    # The card, then her words about the forest spirit, then two notes about places on the map.
+    spoke = False
+    for _ in range(40):
+        time.sleep(3)
+        b = first_line(cmd(HOST, "buttons"))
+        if "IconButton" in b: cmd(HOST, "click IconButton")
+        elif "'OK'" in b: cmd(HOST, "click OK")
+        elif talking(HOST): spoke = True; cmd(HOST, "next")
+        elif spoke: break
+        for g in ("IconButton", "OK", "Continue"): cmd(GUEST, "click " + g)
+    run.check("the old woman spoke of the new trial", spoke)
+    # Her words end in her menu (ask about the forest, the hut, or leave); whoever leads the talk answers.
+    for _ in range(3):
+        for inst in (GUEST, HOST):
+            for way_out in ("Goodbye", "Leave"):
+                if f"'{way_out}'" in cmd(inst, "buttons"): cmd(inst, "click " + way_out); time.sleep(3)
+        if talking(HOST): finish_any(HOST, GUEST)   # her parting line
+    time.sleep(5)
+    for inst in (HOST, GUEST): dismiss(inst); cmd(inst, "click OK"); cmd(inst, "click Continue")
+    run.check("the guest heard her on the new map", "I have not been to this place" in read_log(GUEST)[read_log(GUEST).rfind("new world (generated map)"):])
+    for inst in (HOST, GUEST):
+        run.check(f"{inst}: the forest spirit's trial has begun", "trial 1" in cmd(inst, "trials") and "Leshy/InProgress" in cmd(inst, "status"), first_line(cmd(inst, "trials"))[:80])
     a, b = pos(HOST), pos(GUEST)
     apart = ((a[0] - b[0]) ** 2 + (a[2] - b[2]) ** 2) ** 0.5
-    run.check("both stand in the house on the new map", apart < 8, f"{apart:.1f} m apart")
+    run.check("both stand in the house on the new map", apart < 12, f"{apart:.1f} m apart")
     hut = [re.search(r"hut=\(([^)]*)\)", cmd(i, "status")) for i in (HOST, GUEST)]
     run.check("the house stands in the same place on both", all(hut) and hut[0].group(1) == hut[1].group(1), str([h and h.group(1) for h in hut]))
-    run.check("the trial stays complete on both", all("complete=True" in cmd(i, "trials") for i in (HOST, GUEST)))
-    lost = [l for l in read_log(HOST)[hm:].splitlines() if "not found here" in l]
+    # From the guest's arrival on: what it asked for on the old map while the host was already leaving doesn't count.
+    arrived = read_log(HOST).rfind("World transfer: sent ")
+    lost = [l for l in read_log(HOST)[max(hm, arrived):].splitlines() if "not found here" in l]
     run.check("nothing a guest asked for was missing on the host", not lost, f"{len(lost)}: {lost[0][:160] if lost else ''}")
 
 

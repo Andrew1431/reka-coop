@@ -23,7 +23,7 @@ public static class ActiveSync
         "Main Canvas", "PlayerCameraSetup", "BackgroundImages", "UseItems", "Ground contact decals", "WeatherManager", "Scripts",
         "Home", "MapBoundaries", "Unused Overlay UI",  // interaction prompts, pooled per copy
         // Roads: named after how they were made, and the host generates a map where a guest loads it.
-        "PathGenerator", "Terrain path nav areas",
+        "PathGenerator", "Terrain path nav areas", "EnvironmentGenerator",   // and the far backdrop the generator leaves
     };
     private const int MinRootSize = 100;   // vegetation and small props are their own roots
     private const int CheckPerFrame = 400;
@@ -251,8 +251,8 @@ public static class ActiveSync
             // usable follows each copy's own prompts: noise, not story. Things a place
             // spawns below itself while running (a ring's spots to sweep) exist on a copy only if they were there
             // when it indexed; UseItemSync and the place's own state keep those in step. Wildlife spawned around a
-            // player (ODPOI_) is each copy's own.
-            if (node.Go != null && !node.Key.Contains("PropFollower") && !node.Key.Contains("(Clone)[") && !node.Key.Contains("vfx_Interactable") && !node.Key.StartsWith("ODPOI_")) yield return new(node.Key, node.Go.activeSelf ? "1" : "0");
+            // player (ODPOI_) is each copy's own, and so are the grouped lights of candles (each copy merges its own).
+            if (node.Go != null && !node.Key.Contains("PropFollower") && !node.Key.Contains("(Clone)[") && !node.Key.Contains("vfx_Interactable") && !node.Key.StartsWith("ODPOI_") && !node.Key.Contains("CandleLight")) yield return new(node.Key, node.Go.activeSelf ? "1" : "0");
     }
 
     public static string Describe() => _nodes == null ? "indexing" : $"{_nodes.Count} watched, {Changed.Count} changed since load";
