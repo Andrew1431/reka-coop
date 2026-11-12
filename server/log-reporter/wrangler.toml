@@ -11,11 +11,13 @@ MAX_UPLOAD_BYTES = "1048576"    # gzip body
 MAX_UNPACKED_BYTES = "8388608"  # after gunzip (zip bombs)
 MIN_VERSION = "0.3.14"          # older mods get 426 and keep their reports on disk
 MIN_PROTOCOL = "48"
+KEEP_DAYS = "90"                # reports delete themselves after this long
 # ADMIN_TOKEN is a secret: wrangler secret put ADMIN_TOKEN
 
-[[r2_buckets]]
+# Workers KV (the account has no R2). The id is filled in by `wrangler kv namespace create REPORTS`.
+[[kv_namespaces]]
 binding = "REPORTS"
-bucket_name = "reka-coop-logs"
+id = "cf37aaa4985948b7b5c134af28e08dc3"
 
 # Per client IP. Periods can only be 10 or 60 seconds.
 [[ratelimits]]

@@ -63,24 +63,45 @@ internal static class Uploader
         if (waitMs > 0) t.Join(waitMs);
     }
 
+    // The server takes 6 uploads a minute from one address. A player can have dozens waiting (every session and
+    // crash since the last time uploads worked), so: what a player reported by hand goes first, then the newest;
+    // one every PaceMs; and when the server says "slow down" the rest waits a minute here instead of until the
+    // next launch (seen: a fresh F8 report stuck behind twenty old ones).
+    private const int PaceMs = 12000, LimitedWaitMs = 65000, MaxLimitedWaits = 6;
+
     private static void Run()
     {
+        int limited = 0;
+        bool first = true;
         while (_again)
         {
             _again = false;
-            string[] files;
-            try { files = Directory.GetFiles(Outbox, "*.json.gz").OrderBy(f => f, StringComparer.Ordinal).ToArray(); }
-            catch { return; }
-            foreach (var f in files)
+            for (;;)
             {
                 if (!Allowed()) return;
-                var result = Send(f);
-                if (result == Result.Retry) return;  // offline or limited: the rest waits too
+                string next;
+                try
+                {
+                    next = Directory.GetFiles(Outbox, "*.json.gz")
+                        .OrderByDescending(f => f.EndsWith("-report.json.gz", StringComparison.Ordinal))
+                        .ThenByDescending(f => f, StringComparer.Ordinal).FirstOrDefault();
+                }
+                catch { return; }
+                if (next == null) break;
+                if (!first) Thread.Sleep(PaceMs);
+                first = false;
+                var result = Send(next);
+                if (result == Result.Limited)
+                {
+                    if (++limited > MaxLimitedWaits) return;
+                    Thread.Sleep(LimitedWaitMs);
+                }
+                else if (result == Result.Retry) return;  // offline or the server is down: the rest waits too
             }
         }
     }
 
-    private enum Result { Sent, Rejected, Retry }
+    private enum Result { Sent, Rejected, Retry, Limited }
 
     private static Result Send(string file)
     {
@@ -95,7 +116,8 @@ internal static class Uploader
             using var resp = Http.Send(req);
             var code = (int)resp.StatusCode;
             if (resp.IsSuccessStatusCode) { Move(file, Sent); Trim(Sent, KeepSent); Plugin.Logger.LogInfo($"Reports: sent {Path.GetFileName(file)}"); return Result.Sent; }
-            if (code is 408 or 429 || code >= 500) { Plugin.Logger.LogInfo($"Reports: server said {code}; will retry next launch"); return Result.Retry; }
+            if (code == 429) { Plugin.Logger.LogInfo("Reports: the server says slow down; the rest goes in a minute"); return Result.Limited; }
+            if (code == 408 || code >= 500) { Plugin.Logger.LogInfo($"Reports: server said {code}; will retry next launch"); return Result.Retry; }
             Move(file, Rejected);
             Trim(Rejected, KeepSent);
             Plugin.Logger.LogWarning($"Reports: {Path.GetFileName(file)} turned down ({code}" + (code == 426 ? ": this mod version is too old" : "") + ")");

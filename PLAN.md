@@ -355,3 +355,14 @@ generated quest of each task family on the first map (M2 to M4, M10), then phase
      instructions in both readmes. Tested in a sandbox copy (start backup and playing backup made, 152 KB, 9-80 ms).
   Also: package.ps1's default game version was still 1.0.25; now 1.0.40. A release-style package builds
   (local/release/RekaCoop-0.4.1-audit.zip, not published).
+- 2026-11-12 **Report server deployed** (the user chose to deploy; their Cloudflare account, wrangler already
+  logged in). https://reka-coop-logs.andrew-hartwig1.workers.dev, Worker `reka-coop-logs`. The account has no R2,
+  so (the user's choice) it stores in Workers KV instead: namespace REPORTS, reports expire after 90 days, free
+  tier 1 GB and 1000 writes a day (past that: 503, the mod retries on a later start). Admin token in
+  `local/reka-logs-admin-token.txt` (not in git); `server/log-reporter/pull.py pull/group/show` reads them.
+  Mod: `Reporter.DefaultEndpoint` set; an empty Endpoint in an old config means the default; upload wording and
+  the first-start notice are back (the notice now says 90 days). Tested for real with two dev copies: F8 report
+  from host and guest arrive under one id; pulled and shown with pull.py. Found on the way: an old backlog went
+  first and ran into the rate limit (6 a minute per address), so the fresh F8 report waited for a later launch.
+  Uploader now sends F8 reports first, then newest first, one every 12 s, and waits a minute on "slow down".
+  About 46 test reports from today's dev copies are on the server (they expire by themselves).

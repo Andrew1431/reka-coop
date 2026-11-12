@@ -88,17 +88,25 @@ WHAT TO EXPECT
 SOMETHING WENT WRONG? PRESS F8
 ------------------------------
 Press F8 in the game (the top-left corner reminds you), type one line about what went wrong and press Enter.
-The mod then saves a report on the PC of everyone in the session, all under the same report id.
-- Nothing is sent anywhere by itself in this version. The report is a file in
-  BepInEx\RekaCoop-reports\outbox in the game folder (the newest one ending in -report.json.gz).
-- Post that file on the Discord below with a line about what happened; ask the others in your session to post
-  theirs too.
-- In the file: the mod's own lines from BepInEx\LogOutput.log (plus other warnings and errors), this session's
-  lines from desync.log, the mod, game and protocol versions, and session details (host or guest, number of
-  players, ping, scene, frame rate).
-- Taken out of it: player and Steam names (they become "player 1", ...), Steam ids, your Windows user name,
-  PC name and IP addresses. Saves are never in it.
-A report is also written there when you quit and after a crash. The full log is BepInEx\LogOutput.log.
+Everyone in the session then sends their log to the mod's developer under the same report id. That is all you
+need to do; mentioning the report id on the Discord helps.
+
+LOG REPORTS (alpha: on unless you turn them off)
+------------------------------------------------
+To help find bugs, the mod sends a report to its developer when you press F8, when you quit, and after a crash
+(sent on the next start). On the first start a notice explains this and lets you turn it off; nothing is sent
+before you have seen it.
+- Sent: the mod's own lines from BepInEx\LogOutput.log (plus other warnings and errors), this session's lines
+  from desync.log, the mod, game and protocol versions, session details (host or guest, number of players,
+  ping, scene, frame rate) and a random tester id (BepInEx\config\RekaCoop\tester-id.txt).
+- Removed before sending: player and Steam names (they become "player 1", ...), Steam ids, your Windows user
+  name, PC name and IP addresses. Saves are never sent.
+- Where: a Cloudflare server run by the mod's developer, used only to fix the mod. Reports are deleted after
+  90 days. Your IP address is used only to limit how often one PC can upload and is not stored.
+- Turn it off: set  UploadLogs = false  in BepInEx\config\com.andrew1431.rekacoop.cfg (or press
+  "Don't send anything" on the notice). F8 then saves the report on your PC only, in
+  BepInEx\RekaCoop-reports\outbox in the game folder; post that file on the Discord yourself if you like.
+The full log is BepInEx\LogOutput.log in the game folder.
 
 
 MADE WITH AI, OPEN FOR AUDIT

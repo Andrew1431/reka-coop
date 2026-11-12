@@ -2,8 +2,8 @@
 import fs from "node:fs";
 import path from "node:path";
 
-// R2 bucket in memory, or mirrored to a folder when `dir` is given.
-export function mockR2(dir) {
+// A KV namespace in memory, or mirrored to a folder when `dir` is given.
+export function mockKV(dir) {
   const objects = new Map();
   const file = (key) => path.join(dir, ...key.split("/"));
   if (dir && fs.existsSync(path.join(dir, "index.json")))
@@ -20,13 +20,13 @@ export function mockR2(dir) {
     objects,
     async put(key, body, opts = {}) {
       const data = Buffer.from(body);
-      objects.set(key, { data, meta: opts.customMetadata || {}, uploaded: new Date() });
+      objects.set(key, { data, meta: opts.metadata || {}, uploaded: new Date(), ttl: opts.expirationTtl });
       if (dir) { fs.mkdirSync(path.dirname(file(key)), { recursive: true }); fs.writeFileSync(file(key), data); }
       save();
     },
     async get(key) {
       const o = objects.get(key);
-      return o ? { body: new Blob([o.data]).stream(), customMetadata: o.meta } : null;
+      return o ? o.data.buffer.slice(o.data.byteOffset, o.data.byteOffset + o.data.length) : null;
     },
     async list({ prefix = "", cursor, limit = 1000 } = {}) {
       const keys = [...objects.keys()].filter((k) => k.startsWith(prefix)).sort();
@@ -34,8 +34,8 @@ export function mockR2(dir) {
       const page = keys.slice(start, start + limit);
       const truncated = start + limit < keys.length;
       return {
-        objects: page.map((k) => ({ key: k, size: objects.get(k).data.length, uploaded: objects.get(k).uploaded, customMetadata: objects.get(k).meta })),
-        truncated,
+        keys: page.map((k) => ({ name: k, metadata: objects.get(k).meta })),
+        list_complete: !truncated,
         cursor: truncated ? String(start + limit) : undefined,
       };
     },
@@ -65,7 +65,7 @@ export function env(dir, adminToken = "local-admin-token-0123456789") {
     MIN_VERSION: "0.3.14",
     MIN_PROTOCOL: "48",
     ADMIN_TOKEN: adminToken,
-    REPORTS: mockR2(dir),
+    REPORTS: mockKV(dir),
     UPLOAD_LIMIT: mockLimiter(6, 60),
   };
 }

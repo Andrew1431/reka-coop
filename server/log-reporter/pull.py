@@ -4,7 +4,7 @@
     python pull.py group [--out DIR] [--version 0.3.14] [--top 25]
     python pull.py show REPORT_ID [--out DIR]                  # every bundle of one F8 report, side by side
 
-Bundles land in DIR (default ../../local/reports, outside git) at their R2 key; already pulled ones are skipped.
+Bundles land in DIR (default ../../local/reports, outside git) at their storage key; already pulled ones are skipped.
 """
 import argparse
 import collections

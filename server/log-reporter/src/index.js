@@ -1,8 +1,10 @@
-// Receives playtest log bundles from the Reka co-op mod and keeps them in R2.
+// Receives playtest log bundles from the Reka co-op mod and keeps them in Workers KV (free tier: 1 GB, 1000 writes
+// a day; a write past that fails, the mod keeps the report on disk and sends it on a later start). Reports expire
+// after KEEP_DAYS so the store cannot fill up.
 // The upload key ships inside the mod, so it only filters out stray traffic: every upload is untrusted.
 //
 //   POST /v1/report          gzip of the bundle JSON (see mod/RekaCoop/Diagnostics/Bundle.cs); X-Reka-Key header
-//   GET  /v1/list            admin: R2 listing with metadata (?cursor=, ?prefix=)
+//   GET  /v1/list            admin: listing with metadata (?cursor=, ?prefix=)
 //   GET  /v1/object/<key>    admin: one stored bundle (gzip)
 // Admin calls need "Authorization: Bearer <ADMIN_TOKEN>" (a wrangler secret).
 
@@ -60,16 +62,25 @@ async function upload(request, env) {
   const day = now.toISOString().slice(0, 10);
   const id = `${now.toISOString().replace(/[:.]/g, "-")}-${randomHex(6)}`;
   const key = `reports/${bundle.mod}/${day}/${bundle.kind}/${id}.json.gz`;
-  await env.REPORTS.put(key, body, {
-    httpMetadata: { contentType: "application/gzip" },
-    customMetadata: {
-      mod: bundle.mod,
-      protocol: String(bundle.protocol),
-      kind: bundle.kind,
-      tester: bundle.testerId,
-      report: bundle.reportId || "",
-    },
-  });
+  try {
+    await env.REPORTS.put(key, body, {
+      expirationTtl: int(env.KEEP_DAYS, 90) * 86400,
+      // KV metadata (1024 bytes at most): what the listing shows without fetching each report.
+      metadata: {
+        mod: bundle.mod,
+        protocol: String(bundle.protocol),
+        kind: bundle.kind,
+        tester: bundle.testerId,
+        report: bundle.reportId || "",
+        size: body.length,
+        uploaded: now.toISOString(),
+      },
+    });
+  } catch (e) {
+    // The day's write quota is used up (or KV is down): the mod keeps the report and tries on a later start.
+    console.error("store", e && e.message || e);
+    return text(503, "store full for today");
+  }
   return json(201, { id });
 }
 
@@ -93,15 +104,18 @@ const bad = (what) => ({ status: 400, message: `bad ${what}` });
 
 async function list(request, env, url) {
   if (!admin(request, env)) return text(401, "no");
-  const opts = { limit: 1000, include: ["customMetadata"] };
+  const opts = { limit: 1000 };
   const cursor = url.searchParams.get("cursor");
   const prefix = url.searchParams.get("prefix");
   if (cursor) opts.cursor = cursor;
   if (prefix) opts.prefix = prefix;
   const r = await env.REPORTS.list(opts);
   return json(200, {
-    objects: r.objects.map((o) => ({ key: o.key, size: o.size, uploaded: o.uploaded, meta: o.customMetadata || {} })),
-    cursor: r.truncated ? r.cursor : null,
+    objects: r.keys.map((k) => {
+      const { size, uploaded, ...meta } = k.metadata || {};
+      return { key: k.name, size: size || 0, uploaded: uploaded || null, meta };
+    }),
+    cursor: r.list_complete ? null : r.cursor,
   });
 }
 
@@ -109,9 +123,9 @@ async function object(request, env, url) {
   if (!admin(request, env)) return text(401, "no");
   const key = decodeURIComponent(url.pathname.slice("/v1/object/".length));
   if (!key.startsWith("reports/") || key.includes("..")) return text(400, "bad key");
-  const o = await env.REPORTS.get(key);
+  const o = await env.REPORTS.get(key, "arrayBuffer");
   if (!o) return text(404, "not found");
-  return new Response(o.body, { headers: { "content-type": "application/gzip" } });
+  return new Response(o, { headers: { "content-type": "application/gzip" } });
 }
 
 function admin(request, env) {

@@ -360,7 +360,7 @@ Playbook: https://github.com/cranebeaker/coop-anything (AGENTS.md). Personal Bep
 - Bundled (`Bundle`: gzip JSON, schema 1, under 900 KB, oldest lines dropped first) on quit, on an unhandled managed exception, on F8, and for a crashed run on the next launch.
 - `Uploader`: outbox/ -> `POST <Endpoint>/v1/report` on a background thread; 2xx -> sent/ (last 20 kept), 408/429/5xx/offline -> stays for the next launch, other 4xx (426 = too old) -> rejected/. Nothing is sent before the first-launch notice was shown, nor while `Endpoint` is empty (the default until the server is deployed).
 - F8: one-line IMGUI box; Enter writes a `===== REPORT <id>` marker and sends `Report` (Problem: id, playerId, note); the host relays a guest's (forcing its real id) and every copy uploads under that id.
-- Server: `server/log-reporter/` (Worker + R2 + rate limit, `pull.py`); see its README. Tested under Node with mock bindings; not deployed, not tried in a running game.
+- Server: `server/log-reporter/` (Worker + KV + rate limit, `pull.py`); see its README. Deployed 2026-11-12. Was: tested under Node with mock bindings; not deployed, not tried in a running game.
 
 ## Install-and-play hosting (protocol v53, 0.3.18)
 - Decided by the user 2026-10-30: no launch options for players; install and uninstall only. No menu stage: a host is joinable only while in a world, and going back to the main menu disconnects everyone (they rejoin from Steam).

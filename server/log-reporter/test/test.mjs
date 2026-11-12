@@ -31,7 +31,11 @@ test("stores a good bundle with metadata", async () => {
   assert.equal(r.status, 201);
   const [[key, o]] = [...env.REPORTS.objects];
   assert.match(key, /^reports\/0\.3\.14\/\d{4}-\d\d-\d\d\/report\/.+\.json\.gz$/);
-  assert.deepEqual(o.meta, { mod: "0.3.14", protocol: "48", kind: "report", tester: "0123456789abcdef0123456789abcdef", report: "a1b2c3d4e5f6" });
+  const { size, uploaded, ...meta } = o.meta;
+  assert.deepEqual(meta, { mod: "0.3.14", protocol: "48", kind: "report", tester: "0123456789abcdef0123456789abcdef", report: "a1b2c3d4e5f6" });
+  assert.equal(size, o.data.length);
+  assert.ok(!Number.isNaN(Date.parse(uploaded)));
+  assert.equal(o.ttl, 90 * 86400);
   assert.equal(JSON.parse(zlib.gunzipSync(o.data)).note, "door stuck");
 });
 

@@ -26,12 +26,12 @@ On top of that, guests never save: a joining player's game keeps the host's worl
 - One shared backpack. Guests never save; their own saves are never touched.
 
 ## Bug reports
-Press F8 in the game and type what went wrong. The mod saves a scrubbed report (no names, Steam ids, user or PC names, IPs or saves) on the PC of everyone in the session, in `BepInEx\RekaCoop-reports\outbox`. Nothing is sent by itself in this version: post the file on the Discord.
+Press F8 in the game and type what went wrong: everyone in the session sends a scrubbed log (no names, Steam ids, user or PC names, IPs or saves) under one report id. During the alpha the mod also sends one when you quit and after a crash. A notice on first start lets you turn this off; it's also a config setting (`UploadLogs`). Reports go to a Cloudflare Worker run by the author (`server/log-reporter/`) and are deleted after 90 days.
 
 ## Building
 - Windows, .NET SDK, Reka installed, and BepInEx 6 IL2CPP (bleeding edge build 791) in a copy of the game.
 - `mod/build.ps1` builds `RekaCoop.dll` against the copy's interop assemblies and installs it; `mod/package.ps1` makes the player zip; `mod/test.ps1` runs the offline network tests.
-- `server/log-reporter/` is the Cloudflare Worker that receives bug reports.
+- `server/log-reporter/` is the Cloudflare Worker that receives bug reports (Workers KV storage).
 
 ## Made with AI, open for audit
 All of the code in this repo, the docs included, was written by an AI (Claude, by Anthropic), directed, playtested and reviewed by the author. Commits made this way carry a `Co-Authored-By: Claude` line.

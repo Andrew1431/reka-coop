@@ -16,8 +16,10 @@ namespace RekaCoop.Diagnostics;
 // Files: BepInEx/RekaCoop-reports/{current,outbox,sent,rejected}. Runs whenever the mod is on.
 internal static class Reporter
 {
-    // Set once server/log-reporter is deployed. Empty: bundles wait in outbox/.
-    public const string DefaultEndpoint = "";
+    // server/log-reporter, deployed 2026-11-12 (a Cloudflare Worker keeping reports in Workers KV for 90 days).
+    public const string DefaultEndpoint = "https://reka-coop-logs.andrew-hartwig1.workers.dev";
+    // A config written by an earlier version has the setting saved as empty: that means "the default", not "none".
+    private static string EndpointNow => string.IsNullOrWhiteSpace(_endpoint.Value) ? DefaultEndpoint : _endpoint.Value.Trim();
 
     private static ConfigEntry<bool> _enabled, _noticeShown, _unityErrors;
     private static ConfigEntry<string> _endpoint;
@@ -32,7 +34,7 @@ internal static class Reporter
     public static bool On => _on;
     // Somewhere to send to. Without one (the report server isn't set up) reports are only saved on this PC, and
     // nothing on screen may say they were sent.
-    private static bool Sends => _enabled.Value && _noticeShown.Value && !string.IsNullOrWhiteSpace(_endpoint.Value);
+    private static bool Sends => _enabled.Value && _noticeShown.Value && !string.IsNullOrWhiteSpace(EndpointNow);
     // For the status line: the key that opens "report a problem".
     public static string KeyHint => _on && !_ended ? $"{_reportKey.Value}: report a problem" : null;
     private const string SavedWhere = "BepInEx\\RekaCoop-reports\\outbox in the game folder";
@@ -51,7 +53,7 @@ internal static class Reporter
             _enabled = config.Bind("Diagnostics", "UploadLogs", defaultOn,
                 "Pre-alpha playtest: send the mod's log lines, desync.log and versions to the mod's developer when the game quits or crashes, " +
                 "or when you press the report key. Names, Steam ids, your Windows user name, PC name and IP addresses are removed first. Saves are never sent.");
-            _endpoint = config.Bind("Diagnostics", "Endpoint", DefaultEndpoint, "Where reports go.");
+            _endpoint = config.Bind("Diagnostics", "Endpoint", "", "Where reports go. Empty: the mod's own report server.");
             _reportKey = config.Bind("Diagnostics", "ReportKey", KeyCode.F8, "Opens \"report a problem\" (a one-line note; everyone in the session sends their logs).");
             _noticeShown = config.Bind("Diagnostics", "NoticeShown", false, "The first-launch notice about log uploads was shown. Nothing is sent before it is.");
             _unityErrors = config.Bind("Diagnostics", "CaptureUnityErrors", false, "Also record the game's own exceptions (Unity log). Off: untested on every game build.");
@@ -59,7 +61,7 @@ internal static class Reporter
             _root = Path.Combine(BepInEx.Paths.BepInExRootPath, "RekaCoop-reports");
             Uploader.Init(_root);
             Uploader.Allowed = () => _enabled.Value && _noticeShown.Value;
-            Uploader.Endpoint = () => _endpoint.Value;
+            Uploader.Endpoint = () => EndpointNow;
             _testerId = LoadTesterId();
             _sessionId = RandomHex(4);
             var current = Path.Combine(_root, "current");
@@ -290,7 +292,7 @@ internal static class Reporter
         Snapshot(id, me, note, session);
         CoopDriver.Notice(Sends
             ? $"Problem reported (id {id}). Logs from everyone in the session are on their way. Thank you!"
-            : $"Problem saved (id {id}) in {SavedWhere}. Nothing was sent: post the newest file from there on the mod's Discord with a line about what happened.");
+            : $"Problem saved (id {id}) in {SavedWhere}. Nothing was sent (log uploads are off): post the newest file from there on the mod's Discord with a line about what happened.");
     }
 
     // A report from another player (ReportSync): add ours to it. Untrusted: ids are checked, notes clipped, rate capped.
@@ -330,7 +332,7 @@ internal static class Reporter
     {
         if (!_on) return;
         // Off, or nowhere to send to: nothing leaves this PC, so there is nothing to ask.
-        if (_enabled.Value && !_noticeShown.Value && !string.IsNullOrWhiteSpace(_endpoint.Value)) { DrawNotice(); return; }
+        if (_enabled.Value && !_noticeShown.Value && !string.IsNullOrWhiteSpace(EndpointNow)) { DrawNotice(); return; }
         var e = Event.current;
         if (!_typing)
         {
@@ -358,7 +360,7 @@ internal static class Reporter
         "session details (role, player count, ping, scene, frame rate) and a random tester id.\n" +
         "Removed first: player and Steam names (they become \"player 1\"...), Steam ids, your Windows user name, PC name and IP addresses. " +
         "Saves are never sent.\n" +
-        "Where: a Cloudflare server run by the mod's developer, kept only to fix the mod.\n\n" +
+        "Where: a Cloudflare server run by the mod's developer, used only to fix the mod; reports are deleted after 90 days.\n\n" +
         "To turn it off later: set UploadLogs = false in BepInEx\\config\\" + Plugin.PluginGuid + ".cfg.";
 
     private static void DrawNotice()
