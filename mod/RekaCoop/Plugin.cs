@@ -12,7 +12,7 @@ public class Plugin : BasePlugin
 {
     public const string PluginGuid = "com.andrew1431.rekacoop";
     public const string PluginName = "Reka Co-op";
-    public const string PluginVersion = "0.4.0";
+    public const string PluginVersion = "0.4.1";
 
     internal static ManualLogSource Logger;
 

@@ -366,3 +366,7 @@ generated quest of each task family on the first map (M2 to M4, M10), then phase
   first and ran into the rate limit (6 a minute per address), so the fresh F8 report waited for a later launch.
   Uploader now sends F8 reports first, then newest first, one every 12 s, and waits a minute on "slow down".
   About 46 test reports from today's dev copies are on the server (they expire by themselves).
+- 2026-11-12 **0.4.1 released** on the user's go-ahead ("Let's publish"): GitHub pre-release v0.4.1, zip + sha256,
+  for Reka 1.0.40, protocol 66. Not covered before release: anything needing two Steam accounts on this build
+  (invite, "Join Game" with Reka closed, rejoin, switching host, failed-join give-up); the user will try it with
+  their wife's PC and copy. Nexus page text updated in release/nexus (1.0.40) but the Nexus upload is the user's.

@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-    [string]$Version = '0.4.0',
+    [string]$Version = '0.4.1',
     [string]$GameVersion = '1.0.40'  # the Reka build this release was tested on (Application.version, without the hash)
 )
 
