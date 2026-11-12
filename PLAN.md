@@ -254,3 +254,17 @@ generated quest of each task family on the first map (M2 to M4, M10), then phase
   6. The oven pass (countdown differs per copy), the dialogue camera on the non-leading copy.
   7. A scenario for high stands (three destroyed, mixed players) and one that drives the hut for travel.
   8. Release 0.4.1 only with the user's go-ahead, after their next playtest.
+- 2026-11-12 **The user's answers to the playtest questions** (asked in chat):
+  1. Travel: the guest has no loading screen or indicator; it sees the world morph under its feet, the weather
+     change, lag; on arrival it runs at about 1 fps while things settle, the dialogue starts while that is still
+     going, then everything comes together and runs fine. To do: cover the guest's screen for the change, and hold
+     the arrival talk until the guest's game has settled, not only loaded.
+  2. The elder Lutki's talk as host went fine on the guest. The camera is wrong in ALL dialogues ("still a major
+     issue"): a major item, not polish.
+  3. A guest starting a talk with the elder and picking options worked fine.
+  4. Giving a Lutki an item: not tried (did not have the item).
+  5. Loot cards in the other player's way: not tried.
+  6. What the stuck-Lutki quest needs: not known to the user.
+  7. The food screen took three berry soups without trouble. Reminded again that the guest saw the travel
+     question, which should be the host's alone for now (fixed 2026-11-11, to confirm in the next playtest).
+  Still to decide with the user: what a passenger sees while the host drives.

@@ -695,9 +695,6 @@ def offerings(run, leader):
     honey = pack_count(HOST, "Item_Collected_Tier1_Honeycomb")
     cmd(other, "tp 45 -35 5"); cmd(lead, "tp 29 -29 4")
     time.sleep(2.5)
-    # The bowl beside them, once it takes offerings: pressed too soon, the dev `interact` reached for the far bowl
-    # (16 m away, the one meant for the grain) and the ritual's order was lost. Seen once the suite got fast.
-    until(lambda: "honeycombs_bunch on=True" in cmd(lead, "detections 6"), 30, 1)
     r = cmd(lead, "interact honeycombs_bunch")
     run.check("honeycomb goes into the first bowl", "interacted with" in r, r[:160])
     run.check("she speaks about the next bowl", until(lambda: talking(HOST), 15))
