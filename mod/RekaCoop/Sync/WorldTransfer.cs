@@ -36,12 +36,12 @@ public static class WorldTransfer
 
     public static void Attach(CoopSession session)
     {
-        session.Message += (from, type, r) => { if (type == MsgType.World) OnWorld(r); };
+        session.Message += (from, type, r) => { if (type == MsgType.World) OnWorld(session, from, r); };
         session.PlayerJoined += id => PendingJoiners.Add(id);
         session.PlayerLeft += id =>
         {
             PendingJoiners.Remove(id);
-            if (session.Role == Role.Client && id == 0) CoopDriver.Waiting = null;
+            if (session.Role == Role.Client && id == 0) { CoopDriver.Waiting = null; Cover = null; }
             if (session.Role == Role.Client && id == 0 && !session.Left && !session.WasRejected)
                 DialogueSync.ShowLocal("Lost the connection to the host. Trying to reconnect; nothing here is saved meanwhile.");
         };
@@ -124,14 +124,27 @@ public static class WorldTransfer
         return best;
     }
 
-    private static void OnWorld(NetDataReader r)
+    private static void OnWorld(CoopSession session, RemotePlayer from, NetDataReader r)
     {
         var kind = (Kind)r.GetByte();
+        if (session.Role == Role.Host)
+        {
+            // The only word a guest has here: its game has settled in the new world.
+            if (kind == Kind.Settled && from != null && Arriving.Remove(from.PlayerId))
+                Plugin.Logger.LogInfo($"World transfer: player {from.PlayerId} has settled in the new world");
+            return;
+        }
+        if (kind == Kind.Settled) return;
         if (kind == Kind.Travelling)
         {
             Plugin.Logger.LogInfo("World transfer: the host is travelling to another map");
             InventorySync.ResetLocal();  // stop reporting the pack until the new world hands ours back
-            DialogueSync.ShowLocal("The hut is travelling on. Following the host...");
+            // The new map loads in place on a guest (the ground changes underfoot, the game crawls while it settles):
+            // the screen is covered from here until that is over.
+            Cover = "The hut is travelling on...";
+            _coverSince = Time.unscaledTime;
+            _coverLoadAt = -1;
+            _smoothSince = -1;
             return;
         }
         if (kind == Kind.Wait)
@@ -147,7 +160,31 @@ public static class WorldTransfer
         Plugin.Logger.LogInfo($"World transfer: received {_received.Length / 1024} KB{(_inGameLoad ? " while playing" : "")}");
     }
 
-    private enum Kind : byte { Save = 1, Travelling = 2, Wait = 3 }
+    private enum Kind : byte { Save = 1, Travelling = 2, Wait = 3, Settled = 4 }
+
+    // Guest: what covers the screen while the host's new map loads here (CoopDriver draws it); null when nothing does.
+    internal static string Cover { get; private set; }
+    private static float _coverSince, _coverLoadAt = -1, _smoothSince = -1;
+    private const float CoverAtMost = 240f, SettleAtMost = 60f, SmoothFor = 2f, SmoothFrame = 0.1f;
+
+    // Lifted once the new world is loaded and the game has run smoothly for a moment; the host hears of it and only
+    // then starts what waits for the guests (the trial's card, the old woman's words).
+    private static void WatchCover(CoopSession session)
+    {
+        if (Cover == null) return;
+        float now = Time.unscaledTime;
+        bool late = now - _coverSince > CoverAtMost || (_coverLoadAt > 0 && now - _coverLoadAt > SettleAtMost);
+        bool loaded = _coverLoadAt > 0 && now - _coverLoadAt > 3f && PlayerSync.InWorld
+                      && !SaveLoadGame.isLoading && !SaveLoadGame.worldIsLoading;
+        if (!loaded || Time.unscaledDeltaTime > SmoothFrame) _smoothSince = -1;
+        else if (_smoothSince < 0) _smoothSince = now;
+        if (!late && (_smoothSince < 0 || now - _smoothSince < SmoothFor)) return;
+        Plugin.Logger.LogInfo($"World transfer: {(late ? "not settled in time" : "settled in the new world")} after {now - _coverSince:0.0} s; cover off");
+        Cover = null;
+        var w = session.BeginMessage(MsgType.World);
+        w.Put((byte)Kind.Settled);
+        session.Send(w, DeliveryMethod.ReliableOrdered);
+    }
 
     // Guest: a load we started ourselves (the host's world); any other load from the menu is the player's own.
     internal static bool OurLoad { get; private set; }
@@ -241,6 +278,7 @@ public static class WorldTransfer
         _resendAfterSave = false;
         Plugin.Logger.LogInfo($"World transfer: arrived; sending the new world {dir}");
         Arriving.Clear();
+        StoodSince.Clear();
         foreach (var p in session.Players.Values)
             if (p.Ready) { SendWorld(session, p.PlayerId, newest: true); Arriving[p.PlayerId] = false; }
         _arrivingSince = Time.unscaledTime;
@@ -250,6 +288,7 @@ public static class WorldTransfer
     // while those are up, and the save made on arrival is how guests get the new map: they would hear all of it from
     // the old one. So the host holds the card until every guest stands in the new world (or has had three minutes).
     private static readonly Dictionary<int, bool> Arriving = new();   // guest -> went quiet (loading) since the world was sent
+    private static readonly Dictionary<int, float> StoodSince = new();
     private static float _arrivingSince;
     private static System.Action _heldCard;
     private static float _heldSince;
@@ -275,12 +314,18 @@ public static class WorldTransfer
             foreach (var id in Arriving.Keys.ToList())
             {
                 bool here = PlayerSync.InWorldNow(id);
-                if (!session.Players.ContainsKey(id)) Arriving.Remove(id);
+                if (!session.Players.Values.Any(p => p.PlayerId == id)) Arriving.Remove(id);  // Players is keyed by connection
                 else if (!here) Arriving[id] = true;
                 else if (Arriving[id])
                 {
-                    Arriving.Remove(id);
-                    Plugin.Logger.LogInfo($"World transfer: player {id} stands in the new world");
+                    // Standing there, its game may still be crawling: it says when it has settled (OnWorld). An
+                    // older guest never says so; standing there for a while is enough then.
+                    if (!StoodSince.TryGetValue(id, out float since))
+                    {
+                        StoodSince[id] = Time.unscaledTime;
+                        Plugin.Logger.LogInfo($"World transfer: player {id} stands in the new world");
+                    }
+                    else if (Time.unscaledTime - since > 75f) Arriving.Remove(id);
                 }
             }
             if (Time.unscaledTime - _arrivingSince > HoldAtMost) Arriving.Clear();
@@ -322,6 +367,7 @@ public static class WorldTransfer
             return;
         }
         if (session.Role != Role.Client) return;
+        WatchCover(session);
         if (_received != null && _inGameLoad)
         {
             // Playing: write the new world and load it through the in-game loader.
@@ -352,6 +398,7 @@ public static class WorldTransfer
             var slg = RekaCoop.Sync.Find.One<SaveLoadGame>();
             if (slg == null) { Plugin.Logger.LogWarning("World transfer: no SaveLoadGame to load the host's world"); return; }
             CoopDriver.Waiting = null;
+            if (Cover != null) _coverLoadAt = Time.unscaledTime;
             slg.LoadSaveGame(nf, ns);
             return;
         }

@@ -16,6 +16,8 @@ public class CoopDriver : MonoBehaviour
     private static string _notice;
     // Guest: shown until the host's world loads (the host is at the menu, or starting a new journey).
     internal static string Waiting;
+    private static Texture2D _coverTex;
+    private static GUIStyle _coverStyle;
     private static GUIStyle _noticeStyle;
     private static float _noticeUntil;
     private bool _loggedSaveRoot;
@@ -270,6 +272,20 @@ public class CoopDriver : MonoBehaviour
 
     private void OnGUI()
     {
+        var cover = Sync.WorldTransfer.Cover;
+        if (cover != null)
+        {
+            if (_coverTex == null)
+            {
+                _coverTex = new Texture2D(1, 1) { hideFlags = HideFlags.HideAndDontSave };
+                _coverTex.SetPixel(0, 0, Color.black);
+                _coverTex.Apply();
+            }
+            GUI.DrawTexture(new Rect(0, 0, Screen.width, Screen.height), _coverTex);
+            _coverStyle ??= new GUIStyle(GUI.skin.label) { fontSize = 28, alignment = TextAnchor.MiddleCenter };
+            _coverStyle.normal.textColor = Color.white;
+            GUI.Label(new Rect(0, 0, Screen.width, Screen.height), cover, _coverStyle);
+        }
         var text = _notice != null && Time.unscaledTime < _noticeUntil ? _notice : Waiting;
         if (text != null)
         {

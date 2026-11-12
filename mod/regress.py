@@ -43,6 +43,17 @@ def ps(script, *args):
                           capture_output=True, text=True, stdin=subprocess.DEVNULL)
 
 
+def keep_logs(run):
+    """A failed run's logs go to local/logs before the next start overwrites them."""
+    if run.passed: return
+    tag = time.strftime("%Y-%m-%d_%H%M%S") + "_" + re.sub(r"[^a-z]+", "-", run.name.split(" / ")[-1])
+    os.makedirs(os.path.join(ROOT, "local", "logs"), exist_ok=True)
+    for inst in (HOST, GUEST):
+        try: shutil.copyfile(log_path(inst), os.path.join(ROOT, "local", "logs", f"{tag}_{inst}.log"))
+        except OSError: pass
+    print(f"  logs kept as local/logs/{tag}_*.log", flush=True)
+
+
 def log_tail(inst, offset):
     """The log from a byte offset on (the whole log is megabytes late in a run; a command only needs what follows it)."""
     try:
@@ -881,6 +892,8 @@ def travel(run, leader):
         cmd(HOST, "click OK")
     run.check("the host arrives and sends the new world", wait_log(HOST, r"World transfer: sent .* to player 1", 300, since=hm))
     run.check("the guest loads it", wait_log(GUEST, r"World transfer: new world \(generated map\)", 420, since=gm))
+    run.check("the guest's screen is covered until its game has settled", wait_log(GUEST, r"World transfer: settled in the new world after .* cover off", 90, since=gm))
+    run.check("the host hears the guest has settled", wait_log(HOST, r"World transfer: player 1 has settled in the new world", 20, since=hm))
     run.check("the card is shown once the guest is there", wait_log(HOST, r"World transfer: everyone arrived; showing what was held", 120, since=hm))
     cmd(GUEST, "click Continue"); dismiss(GUEST)   # the guest's copy of the question at the edge
     # The card, then her words about the forest spirit, then two notes about places on the map.
@@ -1099,7 +1112,7 @@ def main():
                     common_checks(run)
                 except (Exception, SystemExit) as e:   # a slip in the script too: the run is reported and the games are closed
                     run.check("run completed", False, f"{type(e).__name__}: {e}")
-                runs.append(run)
+                keep_logs(run); runs.append(run)
     else:
         # Chained: one playthrough per leader, every scenario in story order in the same session.
         for leader in leaders:
@@ -1118,7 +1131,7 @@ def main():
                 common_checks(run)
             except (Exception, SystemExit) as e:   # a slip in the script too: the run is reported and the games are closed
                 run.check("run completed", False, f"{type(e).__name__}: {e}")
-            runs.append(run)
+            keep_logs(run); runs.append(run)
     if not keep: stop()
     print()
     for run in runs:
