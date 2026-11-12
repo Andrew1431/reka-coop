@@ -102,7 +102,7 @@ internal static class TalkCamera
     private static float _shownFov = 35f;
 
     // (Application.onBeforeRender is stripped from this build, so the pose can't go on again right before the draw.)
-    private static void Apply()
+    internal static void Apply()
     {
         if (!_overriding || _cam == null) return;
         _cam.transform.SetPositionAndRotation(_shownPos, _shownRot);
@@ -119,5 +119,16 @@ internal static class TalkCamera
         Plugin.Logger.LogInfo("Dialogue: own camera again");
     }
 
+    internal static bool Overriding => _overriding;
+
     public static string Describe() => $"overriding={_overriding} lastFrame={Time.unscaledTime - _receivedAt:0.00}s ago seqIn={_seqIn} seqOut={_seqOut} target={_pos} shown={_shownPos}";
+}
+
+// Switching the camera brain off is not enough: the game also runs it by hand (ManualUpdate), late in the frame, which
+// puts the live virtual camera (this copy's own dialogue shot, or its own view from the hut) back on the main camera
+// over the pose shown above. While someone else's camera is shown, the brain stays out of it.
+[HarmonyLib.HarmonyPatch(typeof(Cinemachine.CinemachineBrain), nameof(Cinemachine.CinemachineBrain.ManualUpdate))]
+internal static class BrainYieldsToShownCamera
+{
+    private static bool Prefix() => !TalkCamera.Overriding;
 }

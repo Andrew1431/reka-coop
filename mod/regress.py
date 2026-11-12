@@ -753,6 +753,7 @@ def bones(run, leader):
     r = cmd(lead, "interact InteractDialogue_OfferingComplete")
     run.check("she is talked to", "interacted with" in r, r[:160])
     run.check("her talk started on the host", until(lambda: talking(HOST), 10))
+    same_view(run, "her talk")
     run.check("that talk ended", finish_talk(lead))
     tasks_done(run, 12, f"the {leader} talked to her")
     for inst in (HOST, GUEST):
@@ -795,6 +796,7 @@ def embers(run, leader):
     r = cmd(lead, "interact InteractDialogue_EmbersStart")
     run.check("she is talked to", "interacted with" in r, r[:160])
     run.check("her talk started on the host", until(lambda: talking(HOST), 10))
+    same_view(run, "her talk")
     run.check("that talk ended", finish_talk(lead))
     time.sleep(4)
     # The fire tool's unlock popup: until it is answered nothing can be interacted with on that copy.
@@ -1052,6 +1054,21 @@ SCENARIOS = {"door": ("pre-door-1.0.32", door), "yard": ("after-door-1.0.32", ya
              "bones": ("charm-1.0.40", bones), "embers": ("embers-1.0.40", embers),
              "travel": ("hut-1.0.40", travel), "hares": ("leshy-1.0.40", hares),
              "stuck": ("leshy-1.0.40", stuck)}
+
+
+def view(inst):
+    """Where that copy's main camera is: (x, y, z), or None."""
+    m = re.search(r"tag=MainCamera target=\S+ pos=\(([-\d.]+), ([-\d.]+), ([-\d.]+)\)", cmd(inst, "cams"))
+    return tuple(float(v) for v in m.groups()) if m else None
+
+
+def same_view(run, what):
+    """Both copies show a talk through the same camera (the leader's), not each through its own."""
+    def apart():
+        a, b = view(HOST), view(GUEST)
+        return 99.0 if not a or not b else math.dist(a, b)
+    ok = until(lambda: apart() < 0.3, 6, 0.5)
+    run.check(f"{what}: both see it through the same camera", ok, f"host {view(HOST)}, guest {view(GUEST)}")
 
 
 def between_checks(run, name):

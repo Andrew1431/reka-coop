@@ -78,7 +78,7 @@ proved on the tutorial beat that first needs it, not a plan per scene:
 - [ ] An unanswered popup on the host (a tool unlock) blocks every interaction there, including the ones the host runs
       for a guest's press: nothing happens and nothing says why. Seen in scripted runs (input off); in real play the
       host just has to click OK, but the guest can't know. Run a guest's interaction past the block, or tell the guest.
-- [ ] The talk camera is often wrong on the copy that does not lead the talk (reported by the user 2026-11-11, embers
+- [x] (2026-11-12, see Progress) The talk camera is often wrong on the copy that does not lead the talk (reported by the user 2026-11-11, embers
       talk "Pfft, don't look at me like that": the host frames the old woman, the guest looks at its own player's back
       from behind with her out of frame). Many talks. Not urgent.
 - [ ] Playtest notes from the user, 2026-11-11 (hut after the tutorial, both windows on one PC; not fixed yet):
@@ -277,3 +277,16 @@ generated quest of each task family on the first map (M2 to M4, M10), then phase
   does the host show the held trial card and the old woman's words. Found on the way: the hold never held. It looked
   guests up by player id in a table keyed by connection and released the card as soon as the world was sent.
   Fixed; the travel scenario checks cover, settled message and order. Protocol 66.
+- 2026-11-12, afternoon. Guest-led passed on Olga's PC on the second try (22 min): all three playthroughs passed
+  once today; the bones failure is intermittent and still uncaught (logs are kept the next time).
+  **Talk camera fixed** (answer 2, the "major issue in all dialogues"). The watching copy did get the leader's pose
+  and did switch its camera brain off, but the game also runs the brain by hand (`CinemachineBrain.ManualUpdate`)
+  late in the frame, which put that copy's own dialogue shot back on the camera. Prefix on ManualUpdate while
+  someone else's camera is shown (`BrainYieldsToShownCamera` in TalkCamera.cs). Probed line by line: both cameras
+  identical. Suite: `same_view` check in the bones and embers talks; embers passed host-led, guest-led and shared.
+  The same fix makes a passenger see the host's driving view in the hut (checked: cameras equal during the drive,
+  the passenger's own camera back after), which is what the user leaned towards; to confirm in their playtest.
+  Stuck-Lutki favour, second stage: still unknown. All three pulled out (found counter 3) and the elder told twice
+  ("There's more got stuck again"): no favour, `poi_LutkiStuckInLogPile_numberOfFreedLutki` stays 0/3. The freed
+  Lutki has a bird "Hold" spot (`BirdInteraction`, GenericPOICondition) and takes an item (TakeItemFromPlayer);
+  what counts one as freed is not visible from the events. Parked; best learned from a real playthrough.
