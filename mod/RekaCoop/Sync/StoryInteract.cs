@@ -63,9 +63,13 @@ public static class StoryInteract
             // A window open on the host (a loot card from the last thing a guest did, a tool unlock) takes the host
             // out of play, and the game then ignores a use: the guest pressed, nothing happened, and nothing said
             // why. The guest is in play; what using this sets off is run directly.
-            if (PopUpManager.isShowingPopupOrInQueue && pd.OnTryToInteract != null)
+            // The same while a passing remark is on the host's screen (seen: the guest walked up to a stuck Lutki,
+            // which set off the remark about it on the host, pulled within its few seconds, and nothing happened).
+            var ui = DialogueUILogic.Instance;
+            bool remark = ui != null && ui.IsTalking && ui.currentDialogueIsPassive;
+            if ((PopUpManager.isShowingPopupOrInQueue || remark) && pd.OnTryToInteract != null)
             {
-                Plugin.Logger.LogInfo($"Story: a window is open here; running {pd.name}'s use for the guest past it");
+                Plugin.Logger.LogInfo($"Story: {(remark ? "a remark is showing" : "a window is open")} here; running {pd.name}'s use for the guest past it");
                 pd.OnTryToInteract.Invoke();
             }
             else pd.SimulateInteraction();

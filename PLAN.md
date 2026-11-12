@@ -297,3 +297,12 @@ generated quest of each task family on the first map (M2 to M4, M10), then phase
   that line ends. Not a mod fault. The script now ends that line whenever it shows up while it waits for the bowl.
   The four "native->managed trampoline" errors in that run came after the failure (a NullReference in game code
   while the story was out of step); to look at again only if they show up in a clean run.
+- 2026-11-12, evening. After the offerings script fix: shared passed on Olga's PC; guest-led failed there at the
+  stuck Lutki (the guest's first pull was admitted by the host, "starts Interact", and then nothing happened; the
+  host pulled that same one itself in the next turn). In the kept log the host had just started the passing remark
+  "Is there a Lutk stuck in that log pile?" when the guest pulled. Guess: the game ignores a use while a remark is
+  on the host's screen, like it does with a window open. StoryInteract.Run now runs the use directly in that case
+  too. NOT verified: three tries here did not hit the remark at the moment of the pull. To watch in later runs
+  (log line "Story: a remark is showing here; running ... past it").
+  Today's score on playthroughs: host-led 2 of 2, shared 2 of 3 (one script fault, fixed), guest-led 1 of 3 (bones
+  once, uncaught; stuck Lutki once, above).
