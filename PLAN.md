@@ -235,3 +235,22 @@ generated quest of each task family on the first map (M2 to M4, M10), then phase
   it before it counts as freed. Not tried. Also found: `CountUpAndDoSth_StaticallySynced.syncedCounts` is a
   static per copy and is not sent to guests (host 3, guest 0 after three pulls); the host runs the story so
   nothing broke, but a guest's copy has the wrong counts. To sync with the other flags (StorySync).
+- 2026-11-11 (night) **Stopped here; both PCs handed back to the user.** Olga's PC is paused (`olga.ps1 stop`):
+  do not run anything there until the user says it is free, then `olga.ps1 allow`. No test games on this PC
+  either until the user says so. HEAD is the build both PCs last had (protocol 65).
+  **To pick up, in this order:**
+  1. Host-led playthrough is not clean yet. Last failure (twice: here, then Olga's PC): the offerings step pressed
+     "honeycomb" before the near bowl took offerings, and the dev `interact` reached the far bowl 16 m away. The
+     step now waits for the near bowl; that fix was started on `offerings host` here and cut short, so it is
+     unverified. Run `regress.py offerings host`, then a host-led playthrough.
+  2. Then one confirmation round, split: host-led and shared on one PC, guest-led on the other. Passed so far on
+     today's fast suite: guest-led twice and shared once (Olga's PC), shared twice (here), host-led once (Olga's
+     PC, before the last two mod changes).
+  3. Ask the user the seven playtest questions (open items above) and decide the passenger view while the host
+     drives.
+  4. Verify by hand that a guest can talk to the skeleton chair (fix in, never exercised).
+  5. Stuck-Lutki favour: try the bird tool on a freed Lutki (`BirdInteraction` on `BirdsHolding_01`), watching
+     `counts Freed` on both copies; then the elder's "I found some Lutki ..." line again.
+  6. The oven pass (countdown differs per copy), the dialogue camera on the non-leading copy.
+  7. A scenario for high stands (three destroyed, mixed players) and one that drives the hut for travel.
+  8. Release 0.4.1 only with the user's go-ahead, after their next playtest.
