@@ -290,3 +290,10 @@ generated quest of each task family on the first map (M2 to M4, M10), then phase
   ("There's more got stuck again"): no favour, `poi_LutkiStuckInLogPile_numberOfFreedLutki` stays 0/3. The freed
   Lutki has a bird "Hold" spot (`BirdInteraction`, GenericPOICondition) and takes an item (TakeItemFromPlayer);
   what counts one as freed is not visible from the events. Parked; best learned from a real playthrough.
+- 2026-11-12, later still. Confirmation on the camera build: host-led passed here (23.8 min). Shared failed on
+  Olga's PC at the offerings, and the kept logs finally show why this step fails now and then: it is the script.
+  The old woman's one-line call from the second bowl ("Into the bowl with it!") sometimes starts just after the
+  script has checked for it; nobody clicks it, it stands open on the host, and the grain bowl only switches on when
+  that line ends. Not a mod fault. The script now ends that line whenever it shows up while it waits for the bowl.
+  The four "native->managed trampoline" errors in that run came after the failure (a NullReference in game code
+  while the story was out of step); to look at again only if they show up in a clean run.

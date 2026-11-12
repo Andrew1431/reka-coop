@@ -716,7 +716,12 @@ def offerings(run, leader):
     # She walks to the second bowl and calls from there (nobody set that talk off, so the host leads it): it follows
     # so closely that the clicking above usually ends it too.
     if until(lambda: talking(HOST), 20, 2): run.check("her call from the second bowl ended", finish_any(HOST, GUEST))
-    run.check("the second bowl can be filled", until(lambda: "grain_bunch on=True" in cmd(HOST, "detections 80"), 90, 3))
+    # Her call can also start a moment after that check (seen: it then stood open on the host for good, and the bowl
+    # only takes grain once it is over), so it is ended whenever it shows up while waiting for the bowl.
+    def bowl_ready():
+        if talking(HOST): finish_any(HOST, GUEST)
+        return "grain_bunch on=True" in cmd(HOST, "detections 80")
+    run.check("the second bowl can be filled", until(bowl_ready, 90, 3))
     second, first = (other, lead) if SPLIT else (lead, other)
     cmd(second, "tp 85 4 4")
     time.sleep(2.5)
