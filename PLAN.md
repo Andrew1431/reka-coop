@@ -268,3 +268,12 @@ generated quest of each task family on the first map (M2 to M4, M10), then phase
   7. The food screen took three berry soups without trouble. Reminded again that the guest saw the travel
      question, which should be the host's alone for now (fixed 2026-11-11, to confirm in the next playtest).
   Still to decide with the user: what a passenger sees while the host drives.
+- 2026-11-12, later. Host-led playthrough passed here (24 min); shared passed on Olga's PC. Guest-led failed there
+  at the bones (24 of 28 gone after five rounds, so the embers after it failed too), plus four "native->managed
+  trampoline" errors on both copies; the next run overwrote the logs. Bones guest-led passed 3 of 3 in isolation
+  here, so it needs the chained run. The suite now keeps a failed run's logs in local/logs.
+  Travel for the guest (answer 1): the guest's screen is covered from the host's departure until its own game has
+  loaded the new map and run smoothly for 2 s (about a minute in the test); it then tells the host, and only then
+  does the host show the held trial card and the old woman's words. Found on the way: the hold never held. It looked
+  guests up by player id in a table keyed by connection and released the card as soon as the world was sent.
+  Fixed; the travel scenario checks cover, settled message and order. Protocol 66.
