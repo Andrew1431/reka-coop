@@ -103,6 +103,7 @@ public class CoopDriver : MonoBehaviour
                 if ((Session.LocalName == DefaultName || Session.LocalName == Instance.Name) && SteamName() is string steamName) Session.LocalName = steamName;
                 Session.Poll();
                 WatchGuestQuit();
+                WatchLeaveWorld();
                 WatchHostsWorld();
                 WatchHosting();
                 Steam.SteamLobby.Tick(Session, _net);
@@ -118,6 +119,7 @@ public class CoopDriver : MonoBehaviour
                 Sync.BirdSync.Tick(Session);
             }
             Diagnostics.Reporter.Tick(Session);
+            SaveBackup.Tick(Time.unscaledTime, Session is { Role: Role.Host } && Sync.WorldTransfer.HostInWorld);
             UpdateCheck.Tick();
             Dev.WindowTitle.Tick();
 #if DEVBUILD
@@ -193,15 +195,33 @@ public class CoopDriver : MonoBehaviour
         Plugin.Logger.LogInfo($"Session ended by the host: {reason}");
         Notice(reason);
         Steam.SteamLobby.Leave();
-        if (Sync.PlayerSync.InWorld)
-        {
-            var pause = FindFirstObjectByType<PauseMenu>(FindObjectsInactive.Include);
-            if (pause != null) pause.BackToMainMenu();
-        }
+        _leaveWorld = Sync.PlayerSync.InWorld;  // WatchLeaveWorld
         if (Instance.Auto) _hostAtMenu = true;  // our own saves only once the host's world is gone (WatchHostsWorld)
     }
 
+    // Out of the world, to the main menu. The pause menu's own button does it; that object only exists once the
+    // pause menu has been opened, so otherwise the game's request for the same thing is raised.
+    internal static string ToMainMenu()
+    {
+        var pause = FindFirstObjectByType<PauseMenu>(FindObjectsInactive.Include);
+        if (pause != null) { pause.BackToMainMenu(); return "pause menu"; }
+        var request = GameEvents.UI.PauseMenu.RequestReturnToMainMenu;
+        if (request != null) { request.Invoke(); return "request"; }
+        return null;
+    }
+
     private bool _hostAtMenu;
+    private bool _leaveWorld;
+    private float _nextLeaveTry;
+
+    // Guest: the session is over, out of the host's world. Tried until it works: in the first seconds after a world
+    // loads there is no pause menu yet to do it with (seen), and the guest would stay in a world nobody runs.
+    private void WatchLeaveWorld()
+    {
+        if (!_leaveWorld || Time.unscaledTime < _nextLeaveTry) return;
+        _nextLeaveTry = Time.unscaledTime + 1f;
+        if (Sync.MenuWatch.Up || !Sync.PlayerSync.InWorld || ToMainMenu() != null) _leaveWorld = false;
+    }
 
     private void WatchHostsWorld()
     {
@@ -260,6 +280,7 @@ public class CoopDriver : MonoBehaviour
                 if (p.Ready) sb.Append($" | {p.Name}#{p.PlayerId} {p.RttMs:0}ms");
             sb.Append($" | puppets {Sync.PlayerSync.PuppetCount}");
         }
+        if (Diagnostics.Reporter.KeyHint is string hint) sb.Append($" | {hint}");
         return sb.ToString();
     }
 
@@ -295,11 +316,13 @@ public class CoopDriver : MonoBehaviour
                 var bg = new Texture2D(1, 1) { hideFlags = HideFlags.HideAndDontSave };  // or a scene change unloads it
                 bg.SetPixel(0, 0, new Color(0f, 0f, 0f, 0.75f));
                 bg.Apply();
-                _noticeStyle = new GUIStyle(GUI.skin.label) { fontSize = 18, padding = new RectOffset(12, 12, 6, 6) };
+                _noticeStyle = new GUIStyle(GUI.skin.label) { fontSize = 18, padding = new RectOffset(12, 12, 6, 6), wordWrap = true };
                 _noticeStyle.normal.background = bg;
                 _noticeStyle.normal.textColor = Color.white;
             }
-            GUI.Label(new Rect(8, 52, 900, 34), text, _noticeStyle);
+            // As tall as the text needs: a long message was cut off at the end of its one line.
+            float width = Mathf.Min(1000f, Screen.width - 16f);
+            GUI.Label(new Rect(8, 52, width, _noticeStyle.CalcHeight(new GUIContent(text), width)), text, _noticeStyle);
         }
         GUI.Label(new Rect(8, 4, 1100, 22), _status);
         if (Steam.SteamLobby.CanInvite && GUI.Button(new Rect(8, 26, 130, 22), "Invite friends")) Steam.SteamLobby.OpenInvite();

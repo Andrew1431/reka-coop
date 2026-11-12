@@ -1179,6 +1179,9 @@ internal static class Commands
             DialogueUILogic.Instance.QueueNextLine();
             return "next";
         }
+        if (a[0] == "backup") { SaveBackup.Soon(); return $"backup due now; they go to {SaveBackup.BackupRoot}"; }
+        if (a[0] == "report") { Diagnostics.Reporter.ReportProblem(a.Length > 1 ? string.Join(" ", a, 1, a.Length - 1) : "dev test"); return "reported"; }
+        if (a[0] == "tomenu") return "to the main menu by: " + (CoopDriver.ToMainMenu() ?? "nothing");
         if (a[0] == "camstate")
         {
             var cam = UnityEngine.Object.FindFirstObjectByType<DialogueCamera>(FindObjectsInactive.Include);

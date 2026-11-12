@@ -11,11 +11,12 @@ Play [Reka](https://store.steampowered.com/app/1737870/) together with friends. 
 - **Update:** the main menu says when a new version is out; close Reka and run `Update Co-op.bat`. It downloads the newest release from this repo, checks the zip's SHA-256 against the one GitHub lists, and replaces only the mod's files (BepInEx too, if a release ships a new build). Saves and settings stay.
 
 ## Your saves are backed up
-Every time Reka starts with the mod, before the game opens any save, the mod zips your whole save folder (`%AppData%\RekaGame\Saves`) into `%AppData%\RekaGame\RekaCoop-Backups`.
-- The first backup, `before-coop_<date>.zip`, is your saves exactly as they were before you ever played co-op. It is kept forever.
-- The newest 10 backups are kept as well; older ones are cleared out so the folder doesn't grow.
+The mod zips your whole save folder (`%AppData%\RekaGame\Saves`) into `%AppData%\RekaGame\RekaCoop-Backups`:
+- `before-coop_<date>.zip`: your saves exactly as they were before you ever played co-op. Kept forever.
+- `<date>.zip`: every time Reka starts, before the game opens any save. The newest 10 are kept.
+- `playing_<date>.zip`: every 20 minutes while you play in your own world (alone or hosting). The newest 12 are kept.
 - The backups live next to your saves, not in the game folder, so uninstalling the mod or verifying the game files in Steam leaves them alone.
-- To restore one: close Reka, move your current `Saves` folder somewhere safe, then unzip a backup into a new `Saves` folder.
+- To restore one: close Reka, run `Open Save Backups.bat` in the game folder, rename `Saves` to `Saves-old`, make a new empty `Saves` folder and copy the contents of a backup zip into it.
 
 On top of that, guests never save: a joining player's game keeps the host's world in a separate folder in the game directory (`CoopSaves`) and never writes to their own saves. Only the host's game saves the shared world, into the host's own save.
 
@@ -24,8 +25,8 @@ On top of that, guests never save: a joining player's game keeps the host's worl
 - The story runs on the host's game. Whoever starts a talk leads it; everyone sees the same lines, choices, popups and weather.
 - One shared backpack. Guests never save; their own saves are never touched.
 
-## Alpha bug reports
-During the alpha the mod sends scrubbed logs (no names, Steam ids, user or PC names, IPs or saves) when you quit, after a crash, and when you press F8. A notice on first start lets you turn it off; it's also a config setting. This is for the alpha only.
+## Bug reports
+Press F8 in the game and type what went wrong. The mod saves a scrubbed report (no names, Steam ids, user or PC names, IPs or saves) on the PC of everyone in the session, in `BepInEx\RekaCoop-reports\outbox`. Nothing is sent by itself in this version: post the file on the Discord.
 
 ## Building
 - Windows, .NET SDK, Reka installed, and BepInEx 6 IL2CPP (bleeding edge build 791) in a copy of the game.

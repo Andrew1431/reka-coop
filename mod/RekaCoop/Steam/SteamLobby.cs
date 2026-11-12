@@ -22,7 +22,9 @@ internal static class SteamLobby
     private static readonly ConcurrentQueue<Action> Queue = new();
     private static readonly System.Collections.Generic.List<Delegate> Keep = new();  // Il2Cpp holds only pointers
     private static float _joiningSince = -1, _connectingSince = -1;  // guest: to say so when a step hangs
-    private const float JoinPatience = 20f, ConnectPatience = 40f;
+    private const float JoinPatience = 20f, ConnectPatience = 40f, GiveUpAfter = 100f;
+    private static bool _saidSlow;
+    private static ulong _pendingJoin;   // an invite taken while the game was still starting: joined once the menu is up
 
     public static string Status { get; private set; } = "";
     public static bool CanInvite => _lobby.HasValue && Instance.Role == Role.Host;
@@ -35,6 +37,12 @@ internal static class SteamLobby
             catch (Exception e) { Plugin.Logger.LogWarning($"Steam: {e}"); }
         }
         Watch(session);
+        if (_pendingJoin != 0 && MenuReady())
+        {
+            ulong id = _pendingJoin;
+            _pendingJoin = 0;
+            OnJoinRequested(session, id);
+        }
         if (_started) KeepLobby(session);
         if (_started || !SteamReady()) return;
         _started = true;
@@ -49,22 +57,40 @@ internal static class SteamLobby
     private static void Watch(CoopSession session)
     {
         float now = Time.unscaledTime;
-        if (session.IsConnected) { _joiningSince = _connectingSince = -1; return; }
+        if (session.IsConnected) { _joiningSince = _connectingSince = -1; _saidSlow = false; return; }
         if (_joiningSince >= 0 && now - _joiningSince > JoinPatience)
+            GiveUp(session, "Steam: couldn't join the lobby",
+                "Couldn't join your friend's game. Their game may be full (4 players), or they went back to the main menu. Ask them to invite you again.");
+        else if (_connectingSince >= 0 && now - _connectingSince > GiveUpAfter)
+            GiveUp(session, "Steam: the host never answered",
+                "Couldn't reach your friend's game. Check that you both have the same version of the co-op mod and that they are in their world, then ask them to invite you again.");
+        else if (_connectingSince >= 0 && now - _connectingSince > ConnectPatience && !_saidSlow)
         {
-            _joiningSince = -1;
-            Status = "Steam: couldn't join the lobby";
-            Plugin.Logger.LogWarning(Status);
-            Sync.DialogueSync.ShowLocal("Couldn't join the host's Steam lobby. Ask for a new invite, or join by IP (-coopconnect).");
-        }
-        if (_connectingSince >= 0 && now - _connectingSince > ConnectPatience)
-        {
-            _connectingSince = -1;
+            _saidSlow = true;
             Status = "Steam: in the lobby, but the host doesn't answer";
             Plugin.Logger.LogWarning(Status);
-            Sync.DialogueSync.ShowLocal("The host doesn't answer over Steam. Still trying; if it stays like this, join by IP (-coopconnect).");
+            CoopDriver.Notice("Your friend's game doesn't answer yet. Still trying for a minute...");
         }
     }
+
+    // Guest: joining didn't work out. Out of the lobby and back to our own menu and saves; otherwise the menu stays
+    // locked ("You're joining a friend's world") until the game is restarted.
+    private static void GiveUp(CoopSession session, string status, string say)
+    {
+        _joiningSince = _connectingSince = -1;
+        _saidSlow = false;
+        Status = status;
+        Plugin.Logger.LogWarning(status + "; giving up");
+        Leave();
+        session.Leave();
+        CoopDriver.Waiting = null;
+        if (Instance.Auto) CoopDriver.ResumeHosting();
+        CoopDriver.Notice(say);
+        Sync.DialogueSync.ShowLocal(say);
+    }
+
+    // The main menu is up and the game knows its saves: only then can we switch to the guest's save folder and back.
+    private static bool MenuReady() => Sync.MenuWatch.Up && FileIO.InstanceIfExists is { isInitialised: true };
 
     private static bool SteamReady()
     {
@@ -162,6 +188,14 @@ internal static class SteamLobby
     {
         if (Instance.Auto && Instance.Role == Role.Host)
         {
+            // Steam started the game from an invite or "Join Game": the menu isn't up yet. Join once it is.
+            if (!session.IsConnected && !MenuReady() && !Sync.PlayerSync.InWorld && !SaveLoadGame.isLoading && !SaveLoadGame.worldIsLoading)
+            {
+                _pendingJoin = lobbyId;
+                Status = "Steam: joining your friend once the menu is up";
+                Plugin.Logger.LogInfo($"Steam: invite to lobby {lobbyId} taken while starting; joining once the main menu is up");
+                return;
+            }
             // Joining means leaving our own world: only from the main menu, where nothing of ours is open.
             if (session.IsConnected || !Sync.MenuWatch.Up)
             {

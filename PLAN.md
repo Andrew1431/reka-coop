@@ -325,3 +325,33 @@ generated quest of each task family on the first map (M2 to M4, M10), then phase
     it (offer: small notice instead of a blocking card); shorten the guest's wait on travel if possible (the 57 s
     includes the host's own load and save before the world is even sent).
   Olga's PC stopped answering (ssh timed out) during the last guest-led run; result unknown.
+- 2026-11-12 **Pre-release audit** (asked by the user: F8 reports, join/leave/rejoin, launch flags, save backups).
+  1. F8 reports. The box, the bundle and the fan-out to everyone in the session work (tested: same report id on
+     host and guest, scrubbed json.gz in BepInEx/RekaCoop-reports/outbox). But `Reporter.DefaultEndpoint` is empty:
+     server/log-reporter was never deployed, so nothing is ever sent, while the game said "logs are on their way"
+     and the readme said reports are sent. Fixed for now by telling the truth: no upload notice without an endpoint,
+     the F8 message says where the file is and to post it on Discord, readmes rewritten. "F8: report a problem" is
+     now in the top-left status line; long notices wrap instead of being cut off. DECISION FOR THE USER: deploy the
+     Worker to their Cloudflare account (then set DefaultEndpoint and put the upload wording back) or ship as is.
+  2. Join/leave. Reviewed CoopDriver/SteamLobby/CoopSession/SaveIsolation. Found and fixed:
+     - A join that fails (lobby full or gone, host never answers) left the player a "guest" at the menu for good:
+       every menu button said "You're joining a friend's world" until a restart. Now gives up (20 s for the lobby,
+       100 s for the host), says why, and goes back to the player's own menu and saves.
+     - Steam starting the game from an invite ("Join Game" with Reka closed) handed the invite over before the main
+       menu was up; the code then answered "go back to the main menu first". Now held until the menu is up.
+       NOT testable here (needs two Steam accounts); to try with a friend.
+     - A guest sent out of the host's world goes through the pause menu object, which does not exist in the first
+       seconds after a world loads; now retried every second until the guest is at the menu.
+     Checked and fine: host with no flags hosts over Steam once in a world, lobby closes at the menu (run in a
+     sandbox copy without any co-op option); guest back to the menu leaves cleanly, host carries on; host to the
+     menu sends guests home; version mismatch says so. Not testable locally: everything that needs a second
+     Steam account (invite, Join Game, rejoin, switching host).
+  3. Launch flags. None needed: with no co-op option the game is "Auto" (hosts over Steam when in a world, becomes
+     a guest on an invite, and back). The -coop... options are dev only; the dev commands are not in the release
+     build. Two player messages still said "join by IP (-coopconnect)"; removed.
+  4. Save backups. Was: one zip per start, newest 10, plus before-coop forever. Added: a zip every 20 minutes
+     while playing in one's own world (newest 12, never while the game is saving, off the game's frame), an
+     "Open Save Backups.bat" that opens the folder and prints the restore steps, and step-by-step restore
+     instructions in both readmes. Tested in a sandbox copy (start backup and playing backup made, 152 KB, 9-80 ms).
+  Also: package.ps1's default game version was still 1.0.25; now 1.0.40. A release-style package builds
+  (local/release/RekaCoop-0.4.1-audit.zip, not published).

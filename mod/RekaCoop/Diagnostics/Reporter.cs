@@ -30,6 +30,12 @@ internal static class Reporter
     private static int _patchFailures;
 
     public static bool On => _on;
+    // Somewhere to send to. Without one (the report server isn't set up) reports are only saved on this PC, and
+    // nothing on screen may say they were sent.
+    private static bool Sends => _enabled.Value && _noticeShown.Value && !string.IsNullOrWhiteSpace(_endpoint.Value);
+    // For the status line: the key that opens "report a problem".
+    public static string KeyHint => _on && !_ended ? $"{_reportKey.Value}: report a problem" : null;
+    private const string SavedWhere = "BepInEx\\RekaCoop-reports\\outbox in the game folder";
     public static string TesterId => _testerId;
 
     public static void Init(ConfigFile config)
@@ -282,9 +288,9 @@ internal static class Reporter
         int me = session?.LocalPlayerId ?? 0;
         if (session is { IsConnected: true }) ReportSync.Send(session, id, me, note);
         Snapshot(id, me, note, session);
-        CoopDriver.Notice(Uploader.Allowed()
+        CoopDriver.Notice(Sends
             ? $"Problem reported (id {id}). Logs from everyone in the session are on their way. Thank you!"
-            : $"Problem saved (id {id}), not sent: log uploads are off. It is in BepInEx\\RekaCoop-reports\\outbox.");
+            : $"Problem saved (id {id}) in {SavedWhere}. Nothing was sent: post the newest file from there on the mod's Discord with a line about what happened.");
     }
 
     // A report from another player (ReportSync): add ours to it. Untrusted: ids are checked, notes clipped, rate capped.
@@ -296,7 +302,7 @@ internal static class Reporter
         if (SeenReports.Contains(id) || Time.unscaledTime - _lastRemoteReport < 20f) return false;
         _lastRemoteReport = Time.unscaledTime;
         Snapshot(id, fromPlayer, Clip(note, 300), CoopDriver.Session);
-        CoopDriver.Notice($"player {fromPlayer} reported a problem: {Clip(note, 80)}" + (Uploader.Allowed() ? " (your log is sent with it)" : ""));
+        CoopDriver.Notice($"player {fromPlayer} reported a problem: {Clip(note, 80)}" + (Sends ? " (your log is sent with it)" : $" (your log is saved with it in {SavedWhere})"));
         return true;
     }
 
@@ -323,7 +329,8 @@ internal static class Reporter
     public static void OnGUI()
     {
         if (!_on) return;
-        if (_enabled.Value && !_noticeShown.Value) { DrawNotice(); return; }  // off: nothing to tell
+        // Off, or nowhere to send to: nothing leaves this PC, so there is nothing to ask.
+        if (_enabled.Value && !_noticeShown.Value && !string.IsNullOrWhiteSpace(_endpoint.Value)) { DrawNotice(); return; }
         var e = Event.current;
         if (!_typing)
         {
@@ -336,7 +343,7 @@ internal static class Reporter
         var r = new Rect(Screen.width / 2f - 360, Screen.height / 2f - 50, 720, 100);
         GUI.Box(r, "");
         GUI.Box(r, "");
-        GUI.Label(new Rect(r.x + 12, r.y + 8, r.width - 24, 22), "Report a problem: what went wrong? (Enter sends everyone's logs, Esc cancels)");
+        GUI.Label(new Rect(r.x + 12, r.y + 8, r.width - 24, 22), Sends ? "Report a problem: what went wrong? (Enter sends everyone's logs, Esc cancels)" : "Report a problem: what went wrong? (Enter saves everyone's logs on their PCs, Esc cancels)");
         GUI.SetNextControlName("RekaReportNote");
         _note = GUI.TextField(new Rect(r.x + 12, r.y + 36, r.width - 24, 24), _note ?? "", 300);
         if (_focus) { GUI.FocusControl("RekaReportNote"); _focus = false; }
