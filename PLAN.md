@@ -306,3 +306,22 @@ generated quest of each task family on the first map (M2 to M4, M10), then phase
   (log line "Story: a remark is showing here; running ... past it").
   Today's score on playthroughs: host-led 2 of 2, shared 2 of 3 (one script fault, fixed), guest-led 1 of 3 (bones
   once, uncaught; stuck Lutki once, above).
+- 2026-11-12 playtest notes (user, kept save, both windows on one PC; build 4ff of today, protocol 66):
+  - A high stand destroyed on the guest: the host saw the quest's progress. Works.
+  - Loot card left open on the host, guest dismissed its own and talked to the elder Lutki: worked; the host was
+    pulled into the talk with the card still on top of it. Camera identical on both in the screenshot. The user asks
+    whether dismissing the card should be synced. Idea to offer: don't sync the dismissal; show the card only to
+    the player who earned it and a small non-blocking notice to the other.
+  - The reverse (card open on the guest, host carries on): worked. Camera sync "looks good".
+  - Host drives the hut: the guest sees the host's driving view. But the hut's walk animation on the guest keeps
+    restarting ("the bird keeps entering the start of the animation, so it is just shuffling"). To fix.
+  - Talking to the skeleton chair pulled the guest all the way in; the user accepts that ("we don't want the client
+    running around doing things while the host is driving").
+  - Travel: the guest's cover screen worked; the load "took very long" for the guest (log: cover up 57 s from the
+    host's departure, the trial card shown only after the guest reported settled). State check after arrival, both
+    games still up: story, trials, saveables, active objects and pack all equal on host and guest; no errors in
+    either log; one desync on the guest (two log hives' item displays) corrected itself.
+  - Open after this playtest: hut walk animation on the passenger; the reward card for the player who did not earn
+    it (offer: small notice instead of a blocking card); shorten the guest's wait on travel if possible (the 57 s
+    includes the host's own load and save before the world is even sent).
+  Olga's PC stopped answering (ssh timed out) during the last guest-led run; result unknown.
