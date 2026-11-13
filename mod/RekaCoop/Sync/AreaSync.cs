@@ -111,7 +111,7 @@ internal static class AreaSync
         {
             var own = _own;
             _own = null;
-            if (!_ownWasIn && own.howManyCollidersOfMineIsPlayerIn > 0 && Of(own).Story.Count > 0) DialogueSync.NoteRequest(DialogueSync.Me, 10f);
+            if (!_ownWasIn && own.howManyCollidersOfMineIsPlayerIn > 0 && Of(own).Story.Count > 0) DialogueSync.NoteRequest(DialogueSync.Me, 10f, walkedIn: true);
         }
         if (_held == null) return;
         var info = _held;
@@ -141,7 +141,7 @@ internal static class AreaSync
         if (others || !t.isActiveAndEnabled) { Plugin.Logger.LogInfo($"Areas: {who} {did} {path} (someone else is in it, or off here)"); return; }
         Plugin.Logger.LogInfo($"Areas: {who} {did} {path}");
         var info = Of(t);
-        if (enter) DialogueSync.NoteRequest(player, 10f);
+        if (enter) DialogueSync.NoteRequest(player, 10f, walkedIn: true);
         Switch(info.Local, false);
         try { (enter ? t.OnPlayerEnter : t.OnPlayerExit)?.Invoke(); }
         finally { Switch(info.Local, true); }

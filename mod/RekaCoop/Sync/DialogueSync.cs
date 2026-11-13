@@ -566,17 +566,23 @@ public static class DialogueSync
     // `act`: something the player did on purpose (picked up, put down, used a tool, pressed interact). While that is
     // fresh, someone merely walking into a detector doesn't take the talk it sets off away from them (seen: the host
     // standing by the old woman led the talk that a guest's chicken in the nest started).
-    internal static void NoteRequest(int playerId, float hold, bool act = false)
+    internal static void NoteRequest(int playerId, float hold, bool act = false, bool walkedIn = false)
     {
-        // ... unless the two are nowhere near each other: what one did on purpose at the shed has nothing to do with
+        // ... unless this player walked into it themselves (`walkedIn`) and the two are nowhere near each other: what one did on purpose at the shed has nothing to do with
         // the talk the other walks into at the old woman's gate (first Steam session: the guest arrived there by
-        // talisman, the host led the gate's line and the guest was pulled back to the host at the shed).
+        // talisman, the host led the gate's line and the guest was pulled back to the host at the shed). Not for a
+        // talk an NPC starts by itself: the old woman's line about the egg belongs to whoever just lifted the egg,
+        // however far from her that was. And not within moments of the act: lifting the egg switches on the
+        // detector around her, which the host standing next to her "walks into" in that same instant.
         if (!act && _requestAct && _requestedBy >= 0 && playerId != _requestedBy && Time.unscaledTime - _requestedAt < RequestWindow
-            && !FarApart(playerId, _requestedBy)) return;
+            && !(walkedIn && FarApart(playerId, _requestedBy) && Time.unscaledTime - _actAt > 2f)) return;
         _requestAct = act;
+        if (act) _actAt = Time.unscaledTime;
         _requestedBy = playerId;
         _requestedAt = Time.unscaledTime + hold;
     }
+
+    private static float _actAt = -100;
 
     private static Vector3? Where(int player)
     {

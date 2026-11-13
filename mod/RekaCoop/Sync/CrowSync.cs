@@ -154,7 +154,8 @@ public static class CrowSync
         foreach (var (key, c) in Copies)
         {
             if (c.Bird == null) { (gone ??= new()).Add(key); continue; }
-            if (Time.unscaledTime - c.LastHeard > StaleAfter) { Release(c); (gone ??= new()).Add(key); continue; }
+            // (the tutorial's ravens become the player's own spell: from then on they are this player's birds)
+            if (Time.unscaledTime - c.LastHeard > StaleAfter || c.Bird.isPlayerBird) { Release(c); (gone ??= new()).Add(key); continue; }
             var go = c.Bird.gameObject;
             if (go.activeSelf != c.On && (c.On || go.activeInHierarchy)) go.SetActive(c.On);
             if (!c.On) continue;

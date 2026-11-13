@@ -81,12 +81,12 @@ internal static class DetectorSync
                 Plugin.Logger.LogInfo($"Detectors: {NameTags.NameOf(_tickFor)} was already inside {ScenePath.Of(d.transform)} when it came on");
             else if (enter && _tickFor >= 0 && !Watches(d))
             {
-                DialogueSync.NoteRequest(_tickFor, 10f);
+                DialogueSync.NoteRequest(_tickFor, 10f, walkedIn: true);
                 Plugin.Logger.LogInfo($"Detectors: {NameTags.NameOf(_tickFor)} walked into {ScenePath.Of(d.transform)}");
             }
             // The host's own step counts too, or a guest's walk into some other detector (the Lutki wander in and out of
             // theirs) would still lead the talk the host just set off.
-            else if (enter && _tickFor < 0 && !Watches(d)) DialogueSync.NoteRequest(DialogueSync.Me, 10f);
+            else if (enter && _tickFor < 0 && !Watches(d)) DialogueSync.NoteRequest(DialogueSync.Me, 10f, walkedIn: true);
             return true;
         }
         // Wildlife the map spawns around each player (ODPOI_WildHare) is each copy's own: the host has no such animal

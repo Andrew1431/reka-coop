@@ -433,3 +433,10 @@ generated quest of each task family on the first map (M2 to M4, M10), then phase
      old-style `RekaCoop.dll.off`; the updater keeps a switched-off install off. Checked in a scratch folder.
   Also seen in the session, not addressed: the guest's copy of POI_JagasBirds "changed here by itself; asked the host"
   about once a second while near (wasteful, harmless); dev test `tp` without y lands 110 m up over the village.
+  Regression on 0.4.2: host-led playthrough passed whole. Guest-led: the first form of fix 4 (any far-apart request
+  beats a fresh act) broke the egg (the host, standing by the old woman, led her line about the egg the guest had
+  just lifted). Final rule: only a walk-in (area or detector) by a player more than 40 m from the actor, and only
+  when the act is older than 2 s. With that: door to chicken passed chained; cleanse, egg, offerings, bones,
+  embers, travel, hares, stuck passed each from its own fixture. One chained guest-led run failed at cleanse (one
+  of five sweep spots never finished on the guest's own copy, no request sent): passed alone right after; taken as
+  a test-press flake, not confirmed. Released as v0.4.2 (GitHub pre-release) on the user's "publish the fix".
