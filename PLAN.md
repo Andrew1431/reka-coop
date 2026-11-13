@@ -395,3 +395,9 @@ generated quest of each task family on the first map (M2 to M4, M10), then phase
      while joining/joined. To find out: why the save menu is reachable and shows the transferred world in guest
      mode, whether loading it by hand from there starts the host's world locally as the host's character, and
      whether going back to the menu always returns to own saves.
+  6. "Disable Co-op.bat" double-clicked, then Reka started: the mod was still loaded (F8 works at the main menu).
+     Checked during the session: RekaCoop.dll is still under its own name on both PCs, so the rename never
+     happened (the script either saw Reka.exe still running or the rename failed; what its window said is not
+     known yet). Separately, by design the script only turns the plugin off and BepInEx itself still loads; a
+     player reads that as "not disabled". To do: find why the rename did not happen; make the result impossible
+     to miss; consider turning BepInEx off as well (doorstop enabled = false) so the game starts untouched.
