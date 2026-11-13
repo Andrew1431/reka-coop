@@ -383,3 +383,4 @@ generated quest of each task family on the first map (M2 to M4, M10), then phase
   3. Bartek (the man with the crows), a repeat of an old one: when someone approaches him the crows calm down and
      land on the nearby posts on the host; on the guest that never happens. The guest can still walk to where each
      crow sits on the host and interact with it there.
+     Also: a crow the guest dismisses is not dismissed for the host, who has to do it again themselves.
