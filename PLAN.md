@@ -384,3 +384,6 @@ generated quest of each task family on the first map (M2 to M4, M10), then phase
      land on the nearby posts on the host; on the guest that never happens. The guest can still walk to where each
      crow sits on the host and interact with it there.
      Also: a crow the guest dismisses is not dismissed for the host, who has to do it again themselves.
+  4. After getting the talisman, the guest teleports back to the shed and walks through the gate again: the
+     open-the-door talk starts, but the host controls it, and the guest ends up where the host was because they
+     were teleported for the talk.
