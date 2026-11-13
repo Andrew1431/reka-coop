@@ -370,3 +370,8 @@ generated quest of each task family on the first map (M2 to M4, M10), then phase
   for Reka 1.0.40, protocol 66. Not covered before release: anything needing two Steam accounts on this build
   (invite, "Join Game" with Reka closed, rejoin, switching host, failed-join give-up); the user will try it with
   their wife's PC and copy. Nexus page text updated in release/nexus (1.0.40) but the Nexus upload is the user's.
+- 2026-11-12 0.4.1 installed in both Steam copies at the user's request, for a Steam session with two accounts:
+  this PC by the installed 0.4.0's own Update Co-op script (download, checksum, update: worked), Olga's PC as a
+  fresh install from the GitHub zip (checksum checked; old leftovers _RekaCoop_removed, CoopBackups, coop-watcher
+  left alone). Olga's PC answers again; its last guest-led playthrough: 1 failed (stuck Lutki not in the same
+  places on both copies), everything else ok, 23 min.
