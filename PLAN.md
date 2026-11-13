@@ -379,3 +379,4 @@ generated quest of each task family on the first map (M2 to M4, M10), then phase
   1. Guest picks up the wheel right at the start: the guest is pushed backwards.
   2. A pumpkin picked up and dropped stays floating for the other players. User's direction: on drop the host
      takes over the physics and replicates it to the guests; keep everything host-driven where we can.
+     Seen with the host doing the picking up and dropping: the guests do not get the new positions.
