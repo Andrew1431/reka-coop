@@ -387,3 +387,11 @@ generated quest of each task family on the first map (M2 to M4, M10), then phase
   4. After getting the talisman, the guest teleports back to the shed and walks through the gate again: the
      open-the-door talk starts, but the host controls it, and the guest ends up where the host was because they
      were teleported for the talk.
+  5. On the guest PC, after joining again ("Join Game" with Reka closed, second join of the evening): the Select
+     Save Game menu shows only the host's world ("Trial of the chicken", 00:01) and none of her own saves, and
+     she "became my character". Checked on her PC during the session (read-only): her real saves are intact (1038
+     files, 104.3 MB, same as the backup); the log shows the game in the guest folder (CoopSaves\guest), second
+     world transfer written to $AUTOSAVE$3, no "back to own saves" yet. So the menu is listing the guest folder
+     while joining/joined. To find out: why the save menu is reachable and shows the transferred world in guest
+     mode, whether loading it by hand from there starts the host's world locally as the host's character, and
+     whether going back to the menu always returns to own saves.
