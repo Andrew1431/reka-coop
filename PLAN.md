@@ -380,3 +380,6 @@ generated quest of each task family on the first map (M2 to M4, M10), then phase
   2. A pumpkin picked up and dropped stays floating for the other players. User's direction: on drop the host
      takes over the physics and replicates it to the guests; keep everything host-driven where we can.
      Seen with the host doing the picking up and dropping: the guests do not get the new positions.
+  3. Bartek (the man with the crows), a repeat of an old one: when someone approaches him the crows calm down and
+     land on the nearby posts on the host; on the guest that never happens. The guest can still walk to where each
+     crow sits on the host and interact with it there.
