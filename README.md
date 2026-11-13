@@ -4,7 +4,7 @@ Play [Reka](https://store.steampowered.com/app/1737870/) together with friends. 
 
 **Experimental alpha.** Tested with 2 players through the prologue (up to getting your chicken-legged hut). Expect bugs. Your saves are backed up automatically every time the game starts (see below).
 
-- **Download:** see [Releases](../../releases) (also on Nexus Mods).
+- **Download:** see [Releases](../../releases). GitHub is the only place to get it for now.
 - **Discord:** https://discord.gg/EeuAr9yZYY (bug reports, ideas, finding people to play with).
 - **Install:** copy the release zip into Reka's game folder (Steam: right-click Reka > Manage > Browse local files). No launch options. Full player instructions: [mod/README-players.txt](mod/README-players.txt).
 - **Turn it off / remove it:** `Disable Co-op.bat`, `Enable Co-op.bat` and `Uninstall Co-op.bat` in the game folder. None of them touch your saves.
