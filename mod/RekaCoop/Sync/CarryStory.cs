@@ -37,7 +37,12 @@ internal static class CarryStory
             var comp = target.TryCast<Component>();
             string type = comp?.GetIl2CppType().Name;
             // On the carried thing itself only what moves the story on is story (the embers carry their own ritual step).
-            bool local = comp != null && (AreaSync.IsLocalTarget(type) || (comp.transform.IsChildOf(own) && !StoryTypes.Contains(type)));
+            // That goes for switching its own parts on and off too: the merchant's wheel switches its axle's collider off
+            // while carried, and with that call silenced on a guest the axle pushed the guest along for as long as they
+            // held the wheel (first Steam session).
+            var part = comp == null ? target.TryCast<GameObject>() : null;
+            bool local = comp != null ? AreaSync.IsLocalTarget(type) || (comp.transform.IsChildOf(own) && !StoryTypes.Contains(type))
+                                      : part != null && part.transform.IsChildOf(own);
             (local ? s.Local : s.Story).Add((ev, i));
         }
     }

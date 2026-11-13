@@ -3,7 +3,7 @@ namespace RekaCoop.Net;
 // Wire format: [byte MsgType][body]. Bump Version on any change to a message layout.
 public static class Protocol
 {
-    public const int Version = 66;
+    public const int Version = 67;
     public const string ConnectKey = "reka-coop";
     public const int DefaultPort = 27877;
 }
@@ -49,5 +49,6 @@ public enum MsgType : byte
     Tutorial = 44,     // byte kind: State (int block, int solved tasks; guest -> host when it got ahead, host -> clients on change and every 3 s); see Sync/TutorialSync.cs
     Map = 45,          // byte kind: Ready (client) / Change (int n, n x (string compass element ID, bool highlighted); both ways, host relays) / All (host -> client: int n, n x ID); see Sync/MapSync.cs
     Report = 46,       // byte kind: Problem (string reportId (12 hex), int playerId, string note); any -> host, relayed; each copy uploads its log under that id; see Diagnostics/ReportSync.cs
+    Crows = 48,        // host -> clients, unreliable, 10 Hz, a place's own birds near a guest: byte n, n x (string scene path, float x, y, z, quaternion, bool on, byte visibility, animator as in Mirror); see Sync/CrowSync.cs
     Intent = 47,       // guest -> host: byte kind, string scene path, args by kind; what a guest does to the story (see Sync/Intents.cs)
 }

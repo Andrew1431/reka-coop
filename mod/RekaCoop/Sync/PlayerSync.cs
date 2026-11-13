@@ -137,6 +137,7 @@ public static class PlayerSync
         CarrySync.ResetLocal();
         MirrorSync.ResetLocal();
         BirdSync.ResetLocal();
+        CrowSync.ResetLocal();
     }
 
     private static void OnState(CoopSession session, RemotePlayer from, NetDataReader r)

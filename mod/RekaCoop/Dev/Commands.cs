@@ -509,6 +509,7 @@ internal static class Commands
             return string.Join(" | ", UnityEngine.Object.FindObjectsByType<ItemRequester>(FindObjectsInactive.Include, FindObjectsSortMode.None)
                 .Select(r => $"{TPath(r.transform)} item={(r.requestItem != null ? r.requestItem.name : "-")} on={r.isActiveAndEnabled} pos={r.transform.position}"));
         if (a[0] == "birds") return Sync.BirdSync.Describe();
+        if (a[0] == "crows") { File.WriteAllText(Path.Combine(BepInEx.Paths.GameRootPath, "crows.txt"), Sync.CrowSync.Describe()); return "wrote crows.txt"; }
         if (a[0] == "birdtest") return Sync.BirdSync.Test();
         if (a[0] == "shoot")
         {
@@ -588,6 +589,28 @@ internal static class Commands
             if (a.Length > 1 && a[1] == "go") return $"next to {best.name} at {Mathf.Sqrt(bestD):0} m";
             best.StartCarrying();
             return $"picked {best.name} from {Mathf.Sqrt(bestD):0} m away; carried={best.isBeingCarried} follower={best.objectFollower?.name}";
+        }
+        if (a[0] == "carryinfo")
+        {
+            // carryinfo: the nearest carriable that isn't an animal: its events, physics and colliders.
+            var me = UnityEngine.Object.FindFirstObjectByType<PlayerMovement_2021>();
+            CarriableObject best = null; float bestD = float.MaxValue;
+            foreach (var co in UnityEngine.Object.FindObjectsByType<CarriableObject>(FindObjectsSortMode.None))
+            {
+                if (co.ai != null || co.GetComponentInParent<GeneralAIController>() != null) continue;
+                float d = (co.transform.position - me.transform.position).sqrMagnitude;
+                if (d < bestD) { bestD = d; best = co; }
+            }
+            if (best == null) return "no carriable object";
+            var sb = new System.Text.StringBuilder();
+            sb.Append($"{best.name} carried={best.isBeingCarried} parent={best.transform.parent?.name} follower={best.objectFollower?.name} rb={(best.rb == null ? "none" : $"kin={best.rb.isKinematic} coll={best.rb.detectCollisions}")} layer={best.gameObject.layer}").AppendLine();
+            sb.Append(Sync.CarryStory.Describe(best)).AppendLine();
+            foreach (var c in best.GetComponentsInChildren<Collider>(true))
+                sb.Append($"  col {c.name} [{c.GetIl2CppType().Name}] enabled={c.enabled} active={c.gameObject.activeInHierarchy} trigger={c.isTrigger} layer={c.gameObject.layer}").AppendLine();
+            var prb = me.GetComponent<Rigidbody>();
+            sb.Append($"player layer={me.gameObject.layer} vel={(prb != null ? prb.velocity.ToString() : "-")}");
+            File.WriteAllText(Path.Combine(BepInEx.Paths.GameRootPath, "carryinfo.txt"), sb.ToString());
+            return "wrote carryinfo.txt";
         }
         if (a[0] == "grabhare")
         {

@@ -20,6 +20,8 @@ public static class StoryInteract
         // What a generated place counts, solves and pays out with (a stuck Lutki freed: one of three, its loot, the place
         // solved, the forest spirit's favour).
         "CountUpAndDoSth_StaticallySynced", "PoiQuestInterface", "POI_Loot", "LeshyApprovalHelper", "QuestPageHelper",
+        // Shooing a place's birds off (Bartek's crows): the host's birds are the birds (CrowSync).
+        "BirdsStartFlyingTrigger", "BirdsStartFlyingTrigger_Single",
     };
     private static readonly Dictionary<System.IntPtr, bool> Known = new();
     private static readonly Dictionary<System.IntPtr, float> SentAt = new();

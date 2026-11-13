@@ -568,11 +568,24 @@ public static class DialogueSync
     // standing by the old woman led the talk that a guest's chicken in the nest started).
     internal static void NoteRequest(int playerId, float hold, bool act = false)
     {
-        if (!act && _requestAct && _requestedBy >= 0 && playerId != _requestedBy && Time.unscaledTime - _requestedAt < RequestWindow) return;
+        // ... unless the two are nowhere near each other: what one did on purpose at the shed has nothing to do with
+        // the talk the other walks into at the old woman's gate (first Steam session: the guest arrived there by
+        // talisman, the host led the gate's line and the guest was pulled back to the host at the shed).
+        if (!act && _requestAct && _requestedBy >= 0 && playerId != _requestedBy && Time.unscaledTime - _requestedAt < RequestWindow
+            && !FarApart(playerId, _requestedBy)) return;
         _requestAct = act;
         _requestedBy = playerId;
         _requestedAt = Time.unscaledTime + hold;
     }
+
+    private static Vector3? Where(int player)
+    {
+        var t = player == Me ? PlayerSync.LocalBody : PlayerSync.PuppetRoot(player);
+        return t != null ? t.position : null;
+    }
+
+    private static bool FarApart(int a, int b) =>
+        Where(a) is Vector3 pa && Where(b) is Vector3 pb && (pa - pb).sqrMagnitude > 40f * 40f;
 
     // Host: an NPC's AI is starting a talk for the player it sees. An AI that sees nobody (a chicken settling in the nest
     // a guest put it in) leaves a guest's fresh request standing: what that guest did set it off.

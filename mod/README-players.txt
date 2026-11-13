@@ -60,7 +60,8 @@ Everyone needs the same version of this mod; anyone on a different one is told s
 
 TURN IT OFF AND ON
 ------------------
-- "Disable Co-op.bat" (in the game folder): Reka starts as the normal single-player game.
+- "Disable Co-op.bat" (in the game folder): Reka starts as the normal single-player game, with nothing of the mod
+  or its loader (BepInEx) running. Close Reka first; the window says "Reka Co-op is OFF" when it worked.
 - "Enable Co-op.bat": turns it back on.
 - "Uninstall Co-op.bat": removes the mod and BepInEx from the game folder. Your saves are not touched.
 - "Open Save Backups.bat": opens the folder with your save backups and says how to restore one.

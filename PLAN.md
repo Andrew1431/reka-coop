@@ -401,3 +401,35 @@ generated quest of each task family on the first map (M2 to M4, M10), then phase
      known yet). Separately, by design the script only turns the plugin off and BepInEx itself still loads; a
      player reads that as "not disabled". To do: find why the rename did not happen; make the result impossible
      to miss; consider turning BepInEx off as well (doorstop enabled = false) so the game starts untouched.
+- 2026-11-12/13 **0.4.2: the six from the Steam session** (user: "fix and publish asap", the mod is shared now).
+  Both PCs' session logs came from the report server (quit reports), kept in local/logs/steam-2026-11-12.
+  1. Wheel pushes the guest: the wheel's pick-up events switch its own `AxelCollider` off; CarryStory counted every
+     GameObject switch as story and silenced it on the guest, so the axle shoved the guest along (4 m/s, reproduced).
+     Switching parts of the carried thing itself is local now; a copy held for someone else has its solid colliders
+     off. Checked: the guest stands still holding it.
+  2. Dropped pumpkin floats for the others: a field pumpkin nobody on that PC has lifted has no rigidbody there, and
+     the copy only followed the dropper's roll when it had one. It follows regardless now; a rest position for
+     something never held is applied too; a roll taken over by another player's pick-up is no longer reported.
+     Checked with seven pick/drop orders: same place on both. NOT done: the user's "host takes over the physics on
+     drop". The dropper still simulates and everyone follows it (host relays); moving the simulation to the host
+     needs the host to own a body for things it never lifted. Open for a later pass if the user still wants it.
+  3. Bartek's crows: they are CollectProjectile birds flying by their own logic on each copy. New `CrowSync`: the
+     host streams a place's birds near a guest (pose, animator), the guest's copies follow with their logic off.
+     Shooing (BirdsStartFlyingTrigger) is story: a guest's use goes whole to the host (StoryInteract), any other
+     start on a guest's copy asks the host (Intent Fly). Checked: they sit on the guest where the host's sit; the
+     guest's shoo flies the host's bird off, the spot goes for both. (Test switched ShooBirdsAway on by hand; the
+     quest's own talk and decision were not replayed.) Protocol 67.
+  4. Gate talk led by the host, guest pulled to the shed: the host had pressed interact at the shed seconds before,
+     and a fresh "act" kept a guest's walk-in from taking the talk it sets off. Now only when the two are within
+     40 m of each other. Reproduced before, fixed after: the guest leads, stays in the yard (the host is brought to
+     the talk, as designed).
+  5. "All her saves are gone, she became my character": for the ~5 s between switching to the guest folder and
+     loading the host's world, the menu shows that folder (the host's world as the only save, the host's character
+     as the menu's figure). A full-screen cover now says "Joining ...; your own saves are not touched". Not testable
+     without Steam.
+  6. Disable Co-op: why the rename did not happen on the user's PC is not known (the window's text was not seen).
+     Rewritten: waits up to 20 s for Reka to close, renames `winhttp.dll` (BepInEx itself off, the game starts
+     untouched), says NOT CHANGED in so many words when it fails; system tools by full path. Enable undoes it and an
+     old-style `RekaCoop.dll.off`; the updater keeps a switched-off install off. Checked in a scratch folder.
+  Also seen in the session, not addressed: the guest's copy of POI_JagasBirds "changed here by itself; asked the host"
+  about once a second while near (wasteful, harmless); dev test `tp` without y lands 110 m up over the village.

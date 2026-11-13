@@ -66,6 +66,7 @@ public class CoopDriver : MonoBehaviour
             Sync.AiSync.Attach(Session);
             Sync.PoiSync.Attach(Session);
             Sync.BirdSync.Attach(Session);
+            Sync.CrowSync.Attach(Session);
             Diagnostics.ReportSync.Attach(Session);
             if (Instance.Auto) StartHosting();
             else if (Instance.Role == Role.Host)
@@ -117,6 +118,7 @@ public class CoopDriver : MonoBehaviour
                 Sync.ActingPlayer.Tick(Session);
                 Sync.AreaSync.Tick(Session);
                 Sync.BirdSync.Tick(Session);
+                Sync.CrowSync.Tick(Session);
             }
             Diagnostics.Reporter.Tick(Session);
             SaveBackup.Tick(Time.unscaledTime, Session is { Role: Role.Host } && Sync.WorldTransfer.HostInWorld);
@@ -294,6 +296,12 @@ public class CoopDriver : MonoBehaviour
     private void OnGUI()
     {
         var cover = Sync.WorldTransfer.Cover;
+        // Joining from the main menu: from the moment the game reads the guest folder until the host's world is up,
+        // the menu behind this shows the host's world as the only save and the host's character in the background
+        // (first Steam session: "all her saves are gone and she became my character"). Nothing was gone; say so,
+        // and don't show it.
+        if (cover == null && Waiting != null && Sync.MenuWatch.Up)
+            cover = Waiting + System.Environment.NewLine + System.Environment.NewLine + "Your own saves are not touched. They are back in this menu when you leave.";
         if (cover != null)
         {
             if (_coverTex == null)

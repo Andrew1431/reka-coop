@@ -29,6 +29,7 @@ public static class CarrySync
         public CarriableObject Co;
         public bool Held;
         public bool WasKinematic, AiWasEnabled;
+        public List<Collider> Solid;                   // its solid colliders, off while someone else holds it
         public float[] AnimValues;                     // the carrier's animator for the animal: the carried pose
         public (int hash, float time)[] AnimStates;
     }
@@ -150,7 +151,8 @@ public static class CarrySync
         foreach (var (key, roll) in new List<KeyValuePair<string, Rolling>>(Rolls))
         {
             var co = roll.Co;
-            if (co == null || !co.gameObject.activeInHierarchy || co.isBeingCarried || !session.IsConnected) { Rolls.Remove(key); continue; }
+            // (someone else picked it up while it still rolled: theirs now, not ours to report)
+            if (co == null || !co.gameObject.activeInHierarchy || co.isBeingCarried || Remotes.ContainsKey(key) || !session.IsConnected) { Rolls.Remove(key); continue; }
             var rb = co.rb;
             bool still = rb == null || rb.isKinematic || rb.IsSleeping() || rb.velocity.sqrMagnitude < 0.0025f && rb.angularVelocity.sqrMagnitude < 0.01f;
             if (!still) roll.StillSince = -1;
@@ -206,6 +208,14 @@ public static class CarrySync
             }
             if (co.rb != null) { c.WasKinematic = co.rb.isKinematic; co.rb.isKinematic = true; }
             co.SetCarryCollidersEnabled(false);
+            // The game's own list misses parts the carrier's pick-up events switch off (the wheel's axle): nothing of
+            // a thing in someone's arms may push the players standing around.
+            if (co.ai == null)
+            {
+                c.Solid = new List<Collider>();
+                foreach (var col in co.GetComponentsInChildren<Collider>(false))
+                    if (col != null && col.enabled && !col.isTrigger) { col.enabled = false; c.Solid.Add(col); }
+            }
             co.HideOwnPromptsWhileCarried();
         }
         catch (Exception e) { Plugin.Logger.LogWarning($"Carry: can't hold {co.name}: {e.Message}"); }
@@ -221,6 +231,7 @@ public static class CarrySync
             var t = Moving(co);
             if (pos is Vector3 p) t.SetPositionAndRotation(p, rot ?? t.rotation);
             if (!c.Held) return;
+            if (c.Solid != null) foreach (var col in c.Solid) if (col != null) col.enabled = true;
             co.SetCarryCollidersEnabled(true);
             co.RestoreOwnPrompts();
             if (co.rb != null) co.rb.isKinematic = c.WasKinematic;
@@ -364,14 +375,16 @@ public static class CarrySync
         else if (kind == Kind.Drop)
         {
             if (!Remotes.TryGetValue(k, out var c) || c.Player != player) return;
-            Plugin.Logger.LogInfo($"Carry: player {player} put down {k} at {pos}");
             bool wasKinematic = c.WasKinematic, held = c.Held;
             var co = c.Co ?? Lookup(k);
+            Plugin.Logger.LogInfo($"Carry: player {player} put down {k} at {pos} (held={held} here={co != null} rb={co?.rb != null} carriedHere={co?.isBeingCarried})");
             Release(k, pos, rot);
-            // Held still until the dropper says where it went
-            if (held && co != null && co.ai == null && co.rb != null)
+            // Held still until the dropper says where it went. A field pumpkin nobody here has lifted yet has no
+            // rigidbody on this machine (the game adds it on the first pick-up): it follows all the same, or it
+            // hangs at carrying height (seen in the first Steam session).
+            if (co != null && co.ai == null)
             {
-                co.rb.isKinematic = true;
+                if (co.rb != null) { wasKinematic = co.rb.isKinematic; co.rb.isKinematic = true; }  // Release put it back as it was
                 Follows[k] = new Follow { Co = co, WasKinematic = wasKinematic, Pos = pos, Rot = rot, Until = Time.unscaledTime + RollFor + 5f };
             }
             CarryStory.GuestDropped(co, player, pos, CarriedByAGuest());
@@ -379,6 +392,9 @@ public static class CarrySync
         else if (kind == Kind.Roll)
         {
             if (Follows.TryGetValue(k, out var f)) { f.Pos = pos; f.Rot = rot; }
+            if (rests) Plugin.Logger.LogInfo($"Carry: player {player}'s {k} rests at {pos} (following={f != null})");
+            if (rests && f == null && !Remotes.ContainsKey(k) && _mineKey != k && Lookup(k) is CarriableObject loose && loose.ai == null && !loose.isBeingCarried)
+                Moving(loose).SetPositionAndRotation(pos, rot);  // we never held it (joined mid-carry): at least where it ended up
             if (rests) Settle(k, pos, rot);
         }
         else return;

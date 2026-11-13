@@ -72,6 +72,9 @@ if ($got.bepinex -and $got.bepinex -ne $have.bepinex) {
     }
     Get-ChildItem -LiteralPath $new -File | Where-Object { $_.Name -in 'winhttp.dll', 'doorstop_config.ini', '.doorstop_version' } |
         Copy-Item -Destination $GameDir -Force
+    # Switched off with "Disable Co-op" (winhttp.dll.off): the new loader stays off too.
+    $offLoader = Join-Path $GameDir 'winhttp.dll.off'
+    if (Test-Path -LiteralPath $offLoader) { Move-Item -LiteralPath (Join-Path $GameDir 'winhttp.dll') -Destination $offLoader -Force }
 }
 
 # The mod: keep it off if it was switched off.
@@ -84,4 +87,5 @@ Get-ChildItem -LiteralPath $new -File | Where-Object { $_.Extension -eq '.bat' -
     Copy-Item -Destination $GameDir -Force
 
 Remove-Item -LiteralPath $work -Recurse -Force
+$off = $off -or ((Test-Path -LiteralPath (Join-Path $GameDir 'winhttp.dll.off')) -and -not (Test-Path -LiteralPath (Join-Path $GameDir 'winhttp.dll')))
 Write-Host "Updated to Reka Co-op $($got.mod)$(if ($off) { ' (still switched off: run Enable Co-op to turn it on)' })."

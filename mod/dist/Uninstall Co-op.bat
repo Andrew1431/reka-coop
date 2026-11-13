@@ -15,7 +15,7 @@ if errorlevel 2 exit /b 0
 rmdir /s /q "BepInEx" 2>nul
 rmdir /s /q "dotnet" 2>nul
 rmdir /s /q "CoopSaves" 2>nul
-del /q "winhttp.dll" "doorstop_config.ini" ".doorstop_version" "README-RekaCoop.txt" "Enable Co-op.bat" "Disable Co-op.bat" "Open Save Backups.bat" 2>nul
+del /q "winhttp.dll" "winhttp.dll.off" "doorstop_config.ini" ".doorstop_version" "README-RekaCoop.txt" "Enable Co-op.bat" "Disable Co-op.bat" "Open Save Backups.bat" 2>nul
 echo Done. Reka is back to the normal game.
 pause
 (goto) 2>nul & del "%~f0"
