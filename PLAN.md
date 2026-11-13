@@ -375,3 +375,5 @@ generated quest of each task family on the first map (M2 to M4, M10), then phase
   fresh install from the GitHub zip (checksum checked; old leftovers _RekaCoop_removed, CoopBackups, coop-watcher
   left alone). Olga's PC answers again; its last guest-led playthrough: 1 failed (stuck Lutki not in the same
   places on both copies), everything else ok, 23 min.
+- 2026-11-12 **Steam session notes (0.4.1, two accounts, user + Olga's PC; noted, not fixed mid-session):**
+  1. Guest picks up the wheel right at the start: the guest is pushed backwards.
